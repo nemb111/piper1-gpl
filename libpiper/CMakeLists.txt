@@ -149,6 +149,33 @@ install(
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
+# ---- Google Test ----
+
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/refs/heads/main.zip
+)
+# For Windows:
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+# Add tests subdirectory
+add_subdirectory(tests)
+
+# =============================================================================
+# Documentation: Compile-Test Workflow
+# =============================================================================
+#
+# The mock libraries and test executables are now defined in tests/CMakeLists.txt
+#
+# To perform compile-time API verification:
+#   1. Build with mocks: cmake -B build && cmake --build build
+#   2. Swap mock libraries with real implementations (libespeak-ng.a, onnxruntime.so)
+#   3. Rebuild: cmake --build build
+#   4. Successful compilation = API compatibility verified
+#
+
 # Copy espeak-ng-data
 set(ESPEAKNG_DATA_SRC ${CMAKE_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data)
 set(ESPEAKNG_DATA_DST ${CMAKE_INSTALL_PREFIX}/espeak-ng-data)
