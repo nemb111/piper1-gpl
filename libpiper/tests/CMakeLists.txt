@@ -5,6 +5,7 @@
 #
 
 cmake_minimum_required(VERSION 3.26)
+project(piper_tests LANGUAGES C CXX)
 
 # =============================================================================
 # Mock Libraries
@@ -22,15 +23,15 @@ target_include_directories(mock_espeak_ng PUBLIC
 target_compile_features(mock_espeak_ng PUBLIC cxx_std_17)
 
 # Mock ONNX Runtime API library
-add_library(mock_onnxruntime INTERFACE
+add_library(mock_onnxruntime STATIC
     mock_onnxruntime.cpp
 )
 
-target_include_directories(mock_onnxruntime INTERFACE
+target_include_directories(mock_onnxruntime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_features(mock_onnxruntime INTERFACE cxx_std_17)
+target_compile_features(mock_onnxruntime PUBLIC cxx_std_17)
 
 # =============================================================================
 # espeak-ng Compile Test Library
@@ -98,7 +99,7 @@ if(TARGET piper)
         mock_espeak_ng
         mock_onnxruntime
     )
-    
+
 
     # espeak-ng compile test executable (uses ONNX Runtime mocks)
     add_executable(espeak_compile_test
@@ -149,3 +150,5 @@ option(PIPER_ENABLE_COMPILE_TESTS "Enable compile-time API verification" ON)
 # 4. Successful compilation = API compatibility verified
 #
 # =============================================================================
+
+
