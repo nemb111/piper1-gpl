@@ -45,9 +45,29 @@ ExternalProject_Add(espeak_ng_external
     UPDATE_DISCONNECTED TRUE
 )
 
-include_directories(
+add_library(espeakng STATIC IMPORTED)
+add_dependencies(espeakng espeak_ng_external)
+set_target_properties(espeakng PROPERTIES
+    IMPORTED_LOCATION ${ESPEAKNG_STATIC_LIB}
+)
+
+add_library(ucd STATIC IMPORTED)
+add_dependencies(ucd espeak_ng_external)
+set_target_properties(ucd PROPERTIES
+    IMPORTED_LOCATION ${UCD_STATIC_LIB}
+)
+
+add_library(espeakng_iface_lib INTERFACE)
+add_dependencies(espeakng_iface_lib espeak_ng_external)
+target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
+target_include_directories(espeakng_iface_lib INTERFACE
     ${ESPEAKNG_INSTALL_DIR}/include
 )
+
+
+# include_directories(
+#     ${ESPEAKNG_INSTALL_DIR}/include
+# )
 
 # ---- onnxruntime ---
 
@@ -110,25 +130,33 @@ if(NOT DEFINED ONNXRUNTIME_DIR)
     endif()
 endif()
 
+add_library(onnxruntime_iface_lib INTERFACE)
+
+target_include_directories(onnxruntime_iface_lib INTERFACE
+    ${ONNXRUNTIME_DIR}/include
+)
+
+target_link_directories(onnxruntime_iface_lib INTERFACE
+    ${ONNXRUNTIME_DIR}/lib
+)
+
+target_link_libraries(onnxruntime_iface_lib INTERFACE
+    onnxruntime
+)
+
 # ---- libpiper ---
 
 add_library(piper SHARED
     ${CMAKE_CURRENT_SOURCE_DIR}/src/piper.cpp
 )
 
-add_dependencies(piper espeak_ng_external)
 target_include_directories(piper PUBLIC
-    ${ESPEAKNG_INSTALL_DIR}/include
-    ${ONNXRUNTIME_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
-target_link_directories(piper PUBLIC
-    ${ONNXRUNTIME_DIR}/lib
-)
+
 target_link_libraries(piper
-    ${ESPEAKNG_STATIC_LIB}
-    ${UCD_STATIC_LIB}
-    onnxruntime
+    espeakng_iface_lib
+    onnxruntime_iface_lib
 )
 
 # ---- install ---
@@ -161,6 +189,8 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 # Add tests subdirectory
+# Pass ESPEAKNG_INSTALL_DIR to the tests subdirectory
+set(ESPEAKNG_INSTALL_DIR ${CMAKE_BINARY_DIR}/espeak_ng-install)
 add_subdirectory(tests)
 
 # =============================================================================

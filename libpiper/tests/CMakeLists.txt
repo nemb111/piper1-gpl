@@ -22,15 +22,57 @@ target_include_directories(mock_espeak_ng PUBLIC
 target_compile_features(mock_espeak_ng PUBLIC cxx_std_17)
 
 # Mock ONNX Runtime API library
-add_library(mock_onnxruntime STATIC
+add_library(mock_onnxruntime INTERFACE
     mock_onnxruntime.cpp
 )
 
-target_include_directories(mock_onnxruntime PUBLIC
+target_include_directories(mock_onnxruntime INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_features(mock_onnxruntime PUBLIC cxx_std_17)
+target_compile_features(mock_onnxruntime INTERFACE cxx_std_17)
+
+# =============================================================================
+# espeak-ng Compile Test Library
+# =============================================================================
+
+# espeak-ng compile test library - verifies espeak-ng API compilation
+# This library provides a clean espeak-ng API interface for compile tests
+add_library(espeak_compile_test_lib STATIC
+    test_espeak_compile.cpp
+)
+
+target_include_directories(espeak_compile_test_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/espeak_ng-install/include
+)
+
+# Link against the actual espeak-ng library
+target_link_libraries(espeak_compile_test_lib PUBLIC
+    ${ESPEAKNG_STATIC_LIB}
+    ${UCD_STATIC_LIB}
+)
+
+target_compile_features(espeak_compile_test_lib PUBLIC cxx_std_17)
+
+# Target alias for explicit namespace scoping (CMake 3.30+)
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30.0")
+    namespace_alias(piper::test::espeak_compile espeak_compile_test_lib)
+else()
+    # For older CMake versions, use a simple target name
+    add_library(piper::test::espeak_compile ALIAS espeak_compile_test_lib)
+endif()
+
+add_library(piper_compile_test STATIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/../src/piper.cpp"
+)
+
+target_include_directories(piper_compile_test PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+)
+
+target_link_libraries(piper_compile_test onnxruntime_iface_lib espeakng_iface_lib)
+
 
 # =============================================================================
 # Test Executables
@@ -54,7 +96,28 @@ if(TARGET piper)
         mock_espeak_ng
         mock_onnxruntime
     )
+    
 
+    # espeak-ng compile test executable (uses ONNX Runtime mocks)
+    add_executable(espeak_compile_test
+        test_espeak_compile.cpp
+    )
+
+    target_link_libraries(espeak_compile_test PRIVATE
+        piper
+        espeak_compile_test_lib
+        mock_espeak_ng
+        mock_onnxruntime
+        GTest::gtest_main
+    )
+
+    add_dependencies(espeak_compile_test
+        espeak_ng_external
+        piper
+        espeak_compile_test_lib
+        mock_espeak_ng
+        mock_onnxruntime
+    )
 endif()
 
 # =============================================================================

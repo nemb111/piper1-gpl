@@ -16,6 +16,9 @@ The test suite provides comprehensive testing infrastructure including:
 - **mock_espeak_ng.h/cpp** - Mock implementations of espeak-ng API
 - **mock_onnxruntime.h/cpp** - Mock implementations of ONNX Runtime API
 
+### Compile Test
+- **test_espeak_compile.cpp** - Compile test for espeak-ng API verification
+
 ### Documentation
 - **EXTERNAL_API_CALLS.md** - Complete list of all external API calls with locations in source code
 - **TEST_USAGE.md** - Comprehensive guide on how to use the mocks for testing
@@ -100,6 +103,8 @@ make -j$(nproc)
 
 The modular structure provides:
 - **test_simple**: Google Test executable with 23 tests
+- **espeak_compile_test**: Executable for espeak-ng API compile verification
+- **espeak_compile_test_lib**: Static library for espeak-ng API interface
 - **mock_espeak_ng**: Static library for espeak-ng mock
 - **mock_onnxruntime**: Static library for ONNX Runtime mock
 
@@ -114,6 +119,26 @@ The modular structure enables **compile-time API verification**:
 3. Rebuild - successful compilation = API compatibility verified
 
 See [TEST_USAGE.md](TEST_USAGE.md) for detailed documentation.
+
+### espeak-ng Compile Test
+
+The **espeak_compile_test** provides compile-time verification of the espeak-ng API:
+
+```bash
+# Build the compile test
+cmake --build build --target espeak_compile_test
+
+# Run the compile test
+./build/tests/espeak_compile_test
+```
+
+The compile test verifies that:
+- espeak-ng headers can be included
+- espeak_ng_* function declarations are accessible
+- espeak-ng library can be linked successfully
+
+See [README_COMPILE_TESTS.md](README_COMPILE_TESTS.md) for complete documentation.
+
 
 ## Testing Strategy
 
