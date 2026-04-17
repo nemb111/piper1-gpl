@@ -77,7 +77,7 @@ int espeak_SetVoiceByName(const char *name) {
     return mock_espeak_state.set_voice_result;
 }
 
-const char *espeak_TextToPhonemesWithTerminator(const char **text, int chars, int mode,
+const char *espeak_TextToPhonemesWithTerminator(const void **text, int chars, int mode,
                                                 int *terminator) {
     mock_espeak_state.text_to_phonemes_call_count++;
     if (*text) {

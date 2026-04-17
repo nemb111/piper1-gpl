@@ -63,6 +63,7 @@ else()
     add_library(piper::test::espeak_compile ALIAS espeak_compile_test_lib)
 endif()
 
+# BEGIN - DO NOT MODIFY!!!
 add_library(piper_compile_test STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../src/piper.cpp"
 )
@@ -71,7 +72,8 @@ target_include_directories(piper_compile_test PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../include"
 )
 
-target_link_libraries(piper_compile_test onnxruntime_iface_lib espeakng_iface_lib)
+target_link_libraries(piper_compile_test mock_onnxruntime espeakng_iface_lib)
+# END - DO NOT MODIFY!!!
 
 
 # =============================================================================

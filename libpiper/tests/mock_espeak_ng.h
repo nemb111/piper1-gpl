@@ -104,7 +104,7 @@ int espeak_SetVoiceByName(const char *name);
  * @param terminator Pointer to store terminator value
  * @return Pointer to phoneme string on success, NULL on error
  */
-const char *espeak_TextToPhonemesWithTerminator(const char **text, int chars, int mode,
+const char *espeak_TextToPhonemesWithTerminator(const void **text, int chars, int mode,
                                                 int *terminator);
 
 /**

@@ -14,6 +14,27 @@ namespace MockOrt {
 Env::Env(LoggingLevel level, const std::string& session_name)
     : level_(level), session_name_(session_name) {}
 
+Env::Env(int level, const std::string& session_name)
+    : level_(static_cast<LoggingLevel>(level)), session_name_(session_name) {}
+
+Env::Env() = default;
+
+/* MemoryInfo Implementation */
+
+MemoryInfo MemoryInfo::CreateCpu(int allocator_type, int mem_type) {
+    auto& info = last_created_;
+    info.allocator_type_ = allocator_type;
+    info.mem_type_ = mem_type;
+    return info;
+}
+
+MemoryInfo MemoryInfo::CreateCpu(OrtMemType mem_type) {
+    return CreateCpu(OrtAllocatorType::OrtArenaAllocator, mem_type);
+}
+
+MemoryInfo::MemoryInfo(OrtAllocatorType allocator_type, OrtMemType mem_type)
+    : allocator_type_(allocator_type), mem_type_(mem_type) {}
+
 Env& Env::GetInstance() {
     static Env instance(LoggingLevel::LevelWarning, "piper");
     return instance;
@@ -43,7 +64,7 @@ void SessionOptions::SetGraphOptimizationLevel(int level) {
 }
 
 /* MemoryInfo Implementation */
-MemoryInfo MemoryInfo::CreateCpu(OrtAllocatorType allocator_type, OrtMemType mem_type) {
+MemoryInfo MemoryInfo::CreateCpu(int allocator_type, int mem_type) {
     auto& info = last_created_;
     info.allocator_type_ = allocator_type;
     info.mem_type_ = mem_type;
@@ -71,10 +92,10 @@ TensorTypeAndShapeInfo::TensorTypeAndShapeInfo(int64_t* shape, size_t shape_size
     }
 }
 
-const int64_t* TensorTypeAndShapeInfo::GetShape() const {
+std::vector<int64_t> TensorTypeAndShapeInfo::GetShape() const {
     shape_accessed = true;
     if (last_accessed_) last_accessed_->shape_accessed = true;
-    return shape_.data();
+    return shape_;
 }
 
 size_t TensorTypeAndShapeInfo::GetShapeElementCount() const {
@@ -150,6 +171,12 @@ const float* Value::GetTensorData_float() const {
 }
 
 /* RunOptions Implementation */
+RunOptions::RunOptions() = default;
+
+RunOptions::RunOptions(const SessionOptions* parent) {
+    (void)parent;
+}
+
 RunOptions& RunOptions::GetInstance() {
     static RunOptions instance;
     return instance;
@@ -168,13 +195,23 @@ void RunOptions::SetConfigEntry(const std::string& key, const std::string& value
 
 /* Session Implementation */
 Session* Session::last_session_ = nullptr;
-std::vector<std::vector<Value>> Session::last_run_outputs_ = {};
+std::vector<Value> Session::last_run_outputs_ = {};
 
 Session::Session(const Env& env, const std::string& model_path, const SessionOptions& options)
     : model_path_(model_path), options_(options) {
     last_session_ = this;
     // Mock output names - match ONNX Runtime naming convention
     output_names_ = {"onnx::TensorString_Output_0", "onnx::TensorString_Output_1"};
+}
+
+Session::Session(const Session& other)
+    : model_path_(other.model_path_), options_(other.options_),
+      output_names_(other.output_names_), run_called(other.run_called) {
+    if (other.last_session_ == &other) {
+        last_session_ = this;
+    } else {
+        last_session_ = other.last_session_;
+    }
 }
 
 std::vector<std::string> Session::GetOutputNames() const {
@@ -191,7 +228,7 @@ std::vector<const char*> Session::GetOutputNamesCStr() const {
     return names;
 }
 
-std::vector<std::vector<Value>> Session::Run(const RunOptions& run_options, const char* const* input_names,
+std::vector<Value> Session::Run(const RunOptions& run_options, const char* const* input_names,
                                 const Value* input_tensors, size_t num_inputs,
                                 const char* const* output_names, size_t num_outputs) {
     run_called = true;
@@ -200,14 +237,12 @@ std::vector<std::vector<Value>> Session::Run(const RunOptions& run_options, cons
     // Check if mock outputs are configured
     if (!mock_output_data_.empty()) {
         for (size_t i = 0; i < mock_output_data_.size(); i++) {
-            std::vector<Value> output_vector;
             Value output;
             output.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
             output.tensor_data_count_ = mock_output_data_[i].size();
             output.tensor_shape_ = mock_output_shapes_[i];
             output.tensor_data_float_ = mock_output_data_[i];
-            output_vector.push_back(output);
-            last_run_outputs_.push_back(output_vector);
+            last_run_outputs_.push_back(output);
         }
     } else {
         // Return default mock outputs
@@ -217,31 +252,27 @@ std::vector<std::vector<Value>> Session::Run(const RunOptions& run_options, cons
             audio_data[i] = std::sin(2 * M_PI * 440.0 * i / 16000.0); // 440Hz sine wave
         }
 
-        std::vector<Value> audio_output_vector;
         Value audio_output;
         audio_output.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
         audio_output.tensor_data_count_ = audio_data.size();
         audio_output.tensor_shape_ = {1, 100};
         audio_output.tensor_data_float_ = audio_data;
-        audio_output_vector.push_back(audio_output);
-        last_run_outputs_.push_back(audio_output_vector);
+        last_run_outputs_.push_back(audio_output);
 
         // Output 1: alignments with 10 alignments
         std::vector<float> alignments_data(10, 256.0f); // hop_length = 256
-        std::vector<Value> alignments_output_vector;
         Value alignments_output;
         alignments_output.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
         alignments_output.tensor_data_count_ = alignments_data.size();
         alignments_output.tensor_shape_ = {1, 10};
         alignments_output.tensor_data_float_ = alignments_data;
-        alignments_output_vector.push_back(alignments_output);
-        last_run_outputs_.push_back(alignments_output_vector);
+        last_run_outputs_.push_back(alignments_output);
     }
 
     return last_run_outputs_;
 }
 
-std::vector<std::vector<Value>> Session::GetLastRunOutputs() {
+std::vector<Value> Session::GetLastRunOutputs() {
     return last_run_outputs_;
 }
 
