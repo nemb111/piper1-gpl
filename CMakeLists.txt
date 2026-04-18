@@ -9,43 +9,24 @@ include(ExternalProject)
 # scikit-build-core will forward Python_* variables
 find_package(Python COMPONENTS Development.Module Development.SABIModule REQUIRED)
 
-# Install location for espeak-ng
-set(ESPEAKNG_BUILD_DIR ${CMAKE_BINARY_DIR}/espeak_ng)
+# ── espeak-ng toolchain vars (native build) ─────────────
+get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
+set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON CACHE BOOL "" FORCE)
+set(PIPER_ESPEAKNG_PATCH_SCRIPT "${_repo_root}/cmake/patch_espeak_data.sh" CACHE STRING "" FORCE)
+set(PIPER_ESPEAKNG_CMAKE_ARGS)
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/espeak_ng_external.cmake)
+configure_espeak_ng_external()
+
 set(ESPEAKNG_INSTALL_DIR ${CMAKE_BINARY_DIR}/espeak_ng-install)
 
 if(WIN32)
-    # Special handling for Windows
     set(ESPEAKNG_STATIC_LIB ${ESPEAKNG_INSTALL_DIR}/lib/espeak-ng.lib)
-    set(UCD_STATIC_LIB ${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build/src/ucd-tools/ucd.lib)
+    set(UCD_STATIC_LIB ${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/src/ucd-tools/libucd.lib)
 else()
     set(ESPEAKNG_STATIC_LIB ${ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a)
-    set(UCD_STATIC_LIB ${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build/src/ucd-tools/libucd.a)
+    set(UCD_STATIC_LIB ${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/src/ucd-tools/libucd.a)
 endif()
-
-ExternalProject_Add(espeak_ng_external
-    GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
-    GIT_TAG 724808c  # 2026-Apr-06
-    PREFIX ${ESPEAKNG_BUILD_DIR}
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${ESPEAKNG_INSTALL_DIR}
-        -DBUILD_SHARED_LIBS:BOOL=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-        -DUSE_ASYNC:BOOL=OFF
-        -DUSE_MBROLA:BOOL=OFF
-        -DUSE_LIBSONIC:BOOL=OFF
-        -DUSE_LIBPCAUDIO:BOOL=OFF
-        -DUSE_KLATT:BOOL=OFF
-        -DUSE_SPEECHPLAYER:BOOL=OFF
-        -DEXTRA_cmn:BOOL=ON
-        -DEXTRA_ru:BOOL=ON
-        # Need to explicitly add ucd include directory for CI
-        "-DCMAKE_C_FLAGS=-D_FILE_OFFSET_BITS=64 -I${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external/src/ucd-tools/src/include"
-        "-DCMAKE_CXX_FLAGS=-D_FILE_OFFSET_BITS=64 -I${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external/src/ucd-tools/src/include"
-    BUILD_BYPRODUCTS
-        ${ESPEAKNG_STATIC_LIB}
-        ${UCD_STATIC_LIB}
-    UPDATE_DISCONNECTED TRUE
-)
 
 include_directories(
     ${ESPEAKNG_INSTALL_DIR}/include
@@ -87,7 +68,7 @@ install(TARGETS espeakbridge
 )
 
 # Copy espeak-ng-data
-set(DATA_SRC ${CMAKE_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data)
+set(DATA_SRC ${ESPEAKNG_INSTALL_DIR}/share/espeak-ng-data)
 set(DATA_DST ${CMAKE_CURRENT_SOURCE_DIR}/src/piper/espeak-ng-data)
 
 add_custom_target(copy_espeak_ng_data ALL

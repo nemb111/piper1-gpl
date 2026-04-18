@@ -32,8 +32,16 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 
 - **Python + C extension**: `setup.py` uses scikit-build to call CMake. The CMake build compiles espeak-ng from source and links it into `espeakbridge.c` (Python stable ABI module).
 - **Development install**: `script/setup --dev` then `script/dev_build` (or `python3 setup.py build_ext --inplace`)
-- **WASM build**: `cmake` with Emscripten toolchain (`cmake/emscripten/`)
+- **Shared CMake module**: `cmake/espeak_ng_external.cmake` — `configure_espeak_ng_external([PREBUILT_DATA_DIR])` auto-detects native vs WASM via `EMCC_PATH`. Used by both `libpiper/CMakeLists.txt` and `wasm_piper/CMakeLists.txt`.
+- **WASM build**: `emcmake cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/emscripten/toolchain.cmake`
 - **Wheels**: `python3 -m build` or `script/package`
+
+### CMake ExternalProject Gotchas
+
+- `if()/endif()` blocks do NOT work inside `ExternalProject_Add()` — use variable substitution.
+- `@`-prefixed CMake variable expansion does NOT work for `PATCH_COMMAND` — use a shell script that no-ops on empty args.
+- `CMAKE_CURRENT_SOURCE_DIR` resolves inside the ExternalProject context, not the caller. Use `get_filename_component(_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)` to reach the repo root.
+- `configure_espeak_ng_external()` requires mandatory toolchain vars (`PIPER_ESPEAKNG_UPDATE_DISCONNECTED`, `PIPER_ESPEAKNG_PATCH_SCRIPT`). Set them before calling; the function validates and errors with a clear message if missing.
 
 ### Running and Testing
 
@@ -77,3 +85,4 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - **ONNX models** are the voice files. They accept `input` (phoneme IDs), `input_lengths`, `scales` (noise, length, noise_w), optional `sid` (speaker ID). Outputs: audio waveform (+ optionally alignment data).
 - **Multi-speaker voices**: `num_speakers > 1` in config, `sid` input required for inference.
 - **Phoneme types**: `espeak` (default), `text` (raw IPA), `pinyin` (Chinese g2pW).
+- **espeak-ng data injection (WASM)**: Pre-compiled data files from a native build are copied into the espeak-ng source tree via `cmake/patch_espeak_data.sh` (PATCH_COMMAND). Never try to run the espeak-ng WASM binary to generate data.

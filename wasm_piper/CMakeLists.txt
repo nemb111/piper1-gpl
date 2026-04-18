@@ -6,17 +6,29 @@
 # into the source tree via PATCH_COMMAND to avoid running the WASM binary.
 #
 # Build:
-#   cd piper1-gpl-wip/wasm_piper
-#   emcmake cmake -B build -DCMAKE_TOOLCHAIN_FILE=../cmake/emscripten/toolchain.cmake
-#   emmake cmake --build build --target piper_wasm_compile_test_wasm
+#   cmake -B wasm_piper/build -S wasm_piper
+#   cmake --build wasm_piper/build --target piper_wasm_compile_test_wasm
 #
-# Output: build/piper_wasm_compile_test_wasm.wasm
+# Output: wasm_piper/build/piper_wasm_compile_test_wasm.wasm
 #
 cmake_minimum_required(VERSION 3.26)
+
+# ── Emscripten detection / download (MUST run before project()) ──
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/scripts/find_emscripten.cmake)
+set(CMAKE_C_COMPILER "${EMCC_PATH}" CACHE FILEPATH "C compiler (emscripten)" FORCE)
+set(CMAKE_CXX_COMPILER "${EMCC_PATH}" CACHE FILEPATH "C++ compiler (emscripten)" FORCE)
+set(CMAKE_ASM_COMPILER "${EMCC_PATH}" CACHE FILEPATH "ASM compiler (emscripten)" FORCE)
+
 project(wasm_piper LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ── espeak-ng toolchain vars (WASM build) ──────────────
+get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED OFF CACHE BOOL "" FORCE)
+set(PIPER_ESPEAKNG_PATCH_SCRIPT "${_repo_root}/cmake/patch_espeak_data.sh" CACHE STRING "" FORCE)
+set(PIPER_ESPEAKNG_CMAKE_ARGS "-DCMAKE_C_COMPILER=${EMCC_PATH}" "-DCMAKE_CXX_COMPILER=${EMCC_PATH}")
 
 # Pre-built espeak-ng data directory
 set(ESPEAKNG_DATA_PREBUILT "${CMAKE_CURRENT_SOURCE_DIR}/data" CACHE PATH "Pre-built espeak-ng data directory")
@@ -46,6 +58,7 @@ add_library(piper_wasm_compile_test STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/src/piper.cpp"
 )
 
+target_compile_definitions(piper_wasm_compile_test PUBLIC MOCK_BUILD=1)
 target_include_directories(piper_wasm_compile_test PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/include"
 )

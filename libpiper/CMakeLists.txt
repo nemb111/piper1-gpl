@@ -5,13 +5,14 @@ project(piper LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ── espeak-ng toolchain vars (native build) ─────────────
+get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON CACHE BOOL "" FORCE)
+set(PIPER_ESPEAKNG_PATCH_SCRIPT "${_repo_root}/cmake/patch_espeak_data.sh" CACHE STRING "" FORCE)
+set(PIPER_ESPEAKNG_CMAKE_ARGS)
+
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/espeak_ng_external.cmake)
 configure_espeak_ng_external()
-
-
-# include_directories(
-#     ${ESPEAKNG_INSTALL_DIR}/include
-# )
 
 # ---- onnxruntime ---
 

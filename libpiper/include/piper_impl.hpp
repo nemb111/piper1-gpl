@@ -12,7 +12,12 @@
 #include <string>
 #include <vector>
 
+#ifdef MOCK_BUILD
+#include "mock_onnxruntime.h"
+#else
 #include <onnxruntime_cxx_api.h>
+#endif
+using namespace Ort;
 
 typedef char32_t Phoneme;
 typedef int64_t PhonemeId;

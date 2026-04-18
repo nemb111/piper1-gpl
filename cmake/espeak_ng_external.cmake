@@ -1,17 +1,37 @@
 # Shared CMake module: configure espeak-ng ExternalProject for native or WASM builds.
-# Usage: include(espeak_ng_external)
-#        configure_espeak_ng_external([PREBUILT_DATA_DIR])
+#
+# Usage:
+#   # Before calling, set PIPER_ESPEAKNG_* variables (see CMakeLists.txt examples)
+#   include(espeak_ng_external)
+#   configure_espeak_ng_external([PREBUILT_DATA_DIR])
+#
+# Mandatory variables (set by caller):
+#   PIPER_ESPEAKNG_UPDATE_DISCONNECTED  — ON for native (skip re-download), OFF for WASM
+#   PIPER_ESPEAKNG_PATCH_SCRIPT         — absolute path to cmake/patch_espeak_data.sh
+# Optional variable (set by caller for cross-compilation):
+#   PIPER_ESPEAKNG_CMAKE_ARGS           — extra CMAKE_ARGS for ExternalProject
+#
+# Optional argument:
+#   PREBUILT_DATA_DIR                   — path to prebuilt espeak-ng-data (WASM only)
 
 include(ExternalProject)
-#
-# When PREBUILT_DATA_DIR is provided (WASM builds), the patch script is invoked.
-# When not provided (native builds), UPDATE_DISCONNECTED and UCD include path are used.
 
 function(configure_espeak_ng_external)
     set(_prebuilt "")
     if(ARGN)
         list(GET ARGN 0 _prebuilt)
     endif()
+
+    # ── Mandatory variable check ─────────────────────────────
+    foreach(_var
+        PIPER_ESPEAKNG_UPDATE_DISCONNECTED
+        PIPER_ESPEAKNG_PATCH_SCRIPT
+    )
+        if(NOT DEFINED ${_var})
+            message(FATAL_ERROR "Missing mandatory toolchain variable: ${_var}. "
+                    "Set it before calling configure_espeak_ng_external().")
+        endif()
+    endforeach()
 
     set(_ESPEAKNG_BUILD_DIR   "${CMAKE_BINARY_DIR}/espeak_ng")
     set(_ESPEAKNG_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-install")
@@ -26,26 +46,17 @@ function(configure_espeak_ng_external)
         set(_UCD_STATIC_LIB      ${_ESPEAKNG_BUILD_SRC}/src/ucd-tools/libucd.a)
     endif()
 
-    # Auto-detect WASM vs native via EMCC_PATH (set by emscripten/toolchain.cmake)
-    set(_is_wasm OFF)
-    if(DEFINED EMCC_PATH)
-        set(_is_wasm ON)
-    endif()
-
-    # WASM-only: remove cached source so patch always runs (shallow clone is fast)
-    if(_is_wasm)
+    # WASM-only: remove cached source so PATCH_COMMAND always runs (shallow clone is fast)
+    if(_prebuilt)
         file(REMOVE_RECURSE "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external")
     endif()
 
-    # ── UCD include (native-only, empty for WASM) ─────────────────
+    # UCD include: needed for native builds (ucd-tools source lives in the git clone)
+    # For WASM builds, ucd-tools is disabled so this is empty.
     set(_ucd_include "")
-    if(NOT _is_wasm)
+    if(NOT _prebuilt)
         set(_ucd_include " -I${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external/src/ucd-tools/src/include")
     endif()
-
-    # Compute absolute path to patch script (repo root relative to this module)
-    get_filename_component(_repo_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-    set(_patch_script "${_repo_root}/cmake/patch_espeak_data.sh")
 
     ExternalProject_Add(espeak_ng_external
         GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
@@ -53,7 +64,7 @@ function(configure_espeak_ng_external)
         PREFIX         ${_ESPEAKNG_BUILD_DIR}
 
         PATCH_COMMAND
-            bash ${_patch_script} <SOURCE_DIR> ${_prebuilt}
+            bash ${PIPER_ESPEAKNG_PATCH_SCRIPT} <SOURCE_DIR> ${_prebuilt}
 
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=${_ESPEAKNG_INSTALL_DIR}
@@ -69,13 +80,13 @@ function(configure_espeak_ng_external)
             -DEXTRA_ru:BOOL=ON
             "-DCMAKE_C_FLAGS=-D_FILE_OFFSET_BITS=64${_ucd_include}"
             "-DCMAKE_CXX_FLAGS=-D_FILE_OFFSET_BITS=64${_ucd_include}"
+            ${PIPER_ESPEAKNG_CMAKE_ARGS}
 
         BUILD_BYPRODUCTS
             ${_ESPEAKNG_STATIC_LIB}
             ${_UCD_STATIC_LIB}
 
-        # Native-only: do not re-download on every configure
-        UPDATE_DISCONNECTED ${_is_wasm}
+        UPDATE_DISCONNECTED ${PIPER_ESPEAKNG_UPDATE_DISCONNECTED}
     )
 
     add_library(espeakng STATIC IMPORTED)

@@ -81,7 +81,7 @@ const char *espeak_TextToPhonemesWithTerminator(const void **text, int chars, in
                                                 int *terminator) {
     mock_espeak_state.text_to_phonemes_call_count++;
     if (*text) {
-        mock_espeak_state.text_to_phonemes_text = strdup(*text);
+        mock_espeak_state.text_to_phonemes_text = strdup((const char*)*text);
     } else {
         mock_espeak_state.text_to_phonemes_text = nullptr;
     }
