@@ -36,35 +36,29 @@ set(ESPEAKNG_DATA_PREBUILT "${CMAKE_CURRENT_SOURCE_DIR}/data" CACHE PATH "Pre-bu
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/espeak_ng_external.cmake)
 configure_espeak_ng_external(${ESPEAKNG_DATA_PREBUILT})
 
-# ── ONNX Runtime mock (real onnxruntime is x86_64 Linux .so, not WASM) ──
+# ── ONNX Runtime mock interface (real onnxruntime is x86_64 Linux .so, not WASM) ──
 
-# ── Mock libraries from ../libpiper/tests ──────────────────
-add_library(mock_onnxruntime STATIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests/mock_onnxruntime.cpp"
-)
-target_include_directories(mock_onnxruntime PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests"
-)
+add_library(onnxruntime_iface_lib INTERFACE)
 
-add_library(mock_espeak_ng STATIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests/mock_espeak_ng.cpp"
-)
-target_include_directories(mock_espeak_ng PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests"
-)
+# ── Call configure (no-ops for WASM since onnxruntime_iface_lib already exists) ──
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/onnxruntime_external.cmake)
+configure_onnxruntime_external()
 
 # ── WASM compile target ──────────────────────────────────────
 add_library(piper_wasm_compile_test STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/src/piper.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests/mock_onnxruntime.cpp"
 )
 
 target_compile_definitions(piper_wasm_compile_test PUBLIC MOCK_BUILD=1)
 target_include_directories(piper_wasm_compile_test PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests"
 )
 
 target_link_libraries(piper_wasm_compile_test PUBLIC
-    mock_onnxruntime
+    onnxruntime_iface_lib
     espeakng_iface_lib
 )
 
