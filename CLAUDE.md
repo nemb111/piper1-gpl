@@ -32,8 +32,8 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 
 - **Python + C extension**: `setup.py` uses scikit-build to call CMake. The CMake build compiles espeak-ng from source and links it into `espeakbridge.c` (Python stable ABI module).
 - **Development install**: `script/setup --dev` then `script/dev_build` (or `python3 setup.py build_ext --inplace`)
-- **Shared CMake module**: `cmake/espeak_ng_external.cmake` — `configure_espeak_ng_external([PREBUILT_DATA_DIR])` auto-detects native vs WASM via `EMCC_PATH`. Used by both `libpiper/CMakeLists.txt` and `wasm_piper/CMakeLists.txt`.
-- **WASM build**: `emcmake cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/emscripten/toolchain.cmake`
+- **Shared CMake module**: `cmake/espeak_ng_external.cmake` — `configure_espeak_ng_external([PREBUILT_DATA_DIR])` requires toolchain vars set by caller. Used by `libpiper/CMakeLists.txt` (native) and `wasm_piper/CMakeLists.txt` (WASM).
+- **WASM build**: `cmake -B wasm_piper/build -S wasm_piper` (uses `find_emscripten.cmake` before `project()` for auto-download + compiler detection).
 - **Wheels**: `python3 -m build` or `script/package`
 
 ### CMake ExternalProject Gotchas
@@ -41,7 +41,8 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - `if()/endif()` blocks do NOT work inside `ExternalProject_Add()` — use variable substitution.
 - `@`-prefixed CMake variable expansion does NOT work for `PATCH_COMMAND` — use a shell script that no-ops on empty args.
 - `CMAKE_CURRENT_SOURCE_DIR` resolves inside the ExternalProject context, not the caller. Use `get_filename_component(_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)` to reach the repo root.
-- `configure_espeak_ng_external()` requires mandatory toolchain vars (`PIPER_ESPEAKNG_UPDATE_DISCONNECTED`, `PIPER_ESPEAKNG_PATCH_SCRIPT`). Set them before calling; the function validates and errors with a clear message if missing.
+- `configure_espeak_ng_external()` requires mandatory toolchain vars (`PIPER_ESPEAKNG_UPDATE_DISCONNECTED`, `PIPER_ESPEAKNG_PATCH_SCRIPT`, `PIPER_ESPEAKNG_CMAKE_ARGS`). Set before calling; the function validates and errors if missing.
+- ExternalProject does NOT inherit CMAKE_C/CXX_COMPILER from parent config — must pass via CMAKE_ARGS or env vars. For WASM, set `PIPER_ESPEAKNG_CMAKE_ARGS "-DCMAKE_C_COMPILER=${EMCC_PATH}" "-DCMAKE_CXX_COMPILER=${EMCC_PATH}"`.
 
 ### Running and Testing
 
