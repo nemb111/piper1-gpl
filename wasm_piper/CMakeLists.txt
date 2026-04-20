@@ -24,13 +24,23 @@ project(wasm_piper LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ── espeak-ng toolchain vars (WASM build) ──────────────
-get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
-set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED OFF CACHE BOOL "" FORCE)
-set(PIPER_ESPEAKNG_PATCH_SCRIPT "${_repo_root}/cmake/patch_espeak_data.sh" CACHE STRING "" FORCE)
-set(PIPER_ESPEAKNG_CMAKE_ARGS "-DCMAKE_C_COMPILER=${EMCC_PATH}" "-DCMAKE_CXX_COMPILER=${EMCC_PATH}")
+# Use emscripten tools for static archives (WASM requires emar index)
+get_filename_component(_emcc_dir "${EMCC_PATH}" DIRECTORY)
+set(CMAKE_AR "${_emcc_dir}/emar" CACHE FILEPATH "WASM archiver" FORCE)
+set(CMAKE_RANLIB "${_emcc_dir}/emranlib" CACHE FILEPATH "WASM ranlib" FORCE)
 
-# Pre-built espeak-ng data directory
+# ── espeak-ng toolchain vars (WASM build) ─────────────────
+get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON CACHE BOOL "" FORCE)
+set(PIPER_ESPEAKNG_PATCH_SCRIPT "${_repo_root}/cmake/patch_espeak_data.sh" CACHE STRING "" FORCE)
+set(PIPER_ESPEAKNG_CMAKE_ARGS
+    "-DCMAKE_C_COMPILER=${EMCC_PATH}"
+    "-DCMAKE_CXX_COMPILER=${EMCC_PATH}"
+    "-DCMAKE_AR=${_emcc_dir}/emar"
+    "-DCMAKE_RANLIB=${_emcc_dir}/emranlib"
+)
+
+# Pre-built espeak-ng data directory (injected via PATCH_COMMAND)
 set(ESPEAKNG_DATA_PREBUILT "${CMAKE_CURRENT_SOURCE_DIR}/data" CACHE PATH "Pre-built espeak-ng data directory")
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/espeak_ng_external.cmake)
@@ -45,7 +55,7 @@ add_library(onnxruntime_iface_lib INTERFACE)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/onnxruntime_external.cmake)
 configure_onnxruntime_external()
 
-# ── WASM compile target ──────────────────────────────────────
+# ── WASM compile target ──────────────────────────────────
 add_library(piper_wasm_compile_test STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/src/piper.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests/mock_onnxruntime.cpp"
@@ -62,7 +72,7 @@ target_link_libraries(piper_wasm_compile_test PUBLIC
     espeakng_iface_lib
 )
 
-# ── WASM executable (produces .wasm) ──────────────────────────
+# ── WASM executable (produces .wasm) ─────────────────────
 add_executable(piper_wasm_compile_test_wasm wasm_main.cpp)
 
 target_link_libraries(piper_wasm_compile_test_wasm PRIVATE
@@ -77,3 +87,94 @@ target_link_options(piper_wasm_compile_test_wasm PRIVATE
     -sEXPORT_NAME="createModule"
     -sWASM_BIGINT=1
 )
+
+# ── WASM mock integration test target (with FS for file injection) ─
+add_executable(piper_wasm_mock_integration_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/wasm_integration_main.cpp")
+
+target_link_libraries(piper_wasm_mock_integration_test PRIVATE
+    piper_wasm_compile_test
+    # Directly link espeak-ng static lib (works around INTERFACE lib resolution)
+    "${CMAKE_BINARY_DIR}/espeak_ng-install/lib/libespeak-ng.a"
+    "${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/src/ucd-tools/libucd.a"
+)
+
+target_link_options(piper_wasm_mock_integration_test PRIVATE
+    -O0
+    -sALLOW_MEMORY_GROWTH
+    -sMODULARIZE=1
+    -sEXPORT_NAME="createModule"
+    -sWASM_BIGINT=1
+    -sENVIRONMENT=node
+    -sEXPORTED_RUNTIME_METHODS=["stringToUTF8","UTF8ToString","ccall","cwrap"]
+)
+
+# Preload espeak-ng data and test files into WASM virtual filesystem
+set(_data_dir "${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+set_target_properties(piper_wasm_mock_integration_test PROPERTIES
+    LINK_FLAGS "--preload-file=\"${_data_dir}/espeak-ng-data@/espeak-ng-data\" --preload-file=\"${_data_dir}/test_voice.onnx.json@/test-data/test_voice.onnx.json\" --preload-file=\"${_data_dir}/test_voice.onnx@/test-data/test_voice.onnx\""
+)
+
+# Force JS output for Node.js testing
+set_target_properties(piper_wasm_mock_integration_test PROPERTIES
+    SUFFIX ".js"
+)
+
+# ── Real ONNX Runtime for WASM (non-mock) ──────────────
+# Uses ONNX Runtime Web's static library for real inference.
+# Requires ONNX Runtime WASM build: cmake -P cmake/build_ort_web.cmake
+
+set(ONNXRUNTIME_WEB_VERSION "1.22.0" CACHE STRING "ONNX Runtime version for WASM")
+set(ONNXRUNTIME_WEB_HASH   "08b078eb7afbf376064b2b0f1781e3d78151cac0592988a0c0ec78bf72fde810"
+    CACHE STRING "SHA256 of ONNX Runtime tarball")
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/onnxruntime_web_external.cmake")
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/onnxruntime_web_external.cmake)
+    configure_onnxruntime_web_external()
+endif()
+
+if(TARGET onnxruntime_web_iface_lib)
+    # Real ONNX WASM library (no MOCK_BUILD, links real ONNX)
+    add_library(piper_wasm_real_test STATIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/src/piper.cpp"
+    )
+
+    target_include_directories(piper_wasm_real_test PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests"
+    )
+
+    target_link_libraries(piper_wasm_real_test PUBLIC
+        onnxruntime_web_iface_lib
+        espeakng_iface_lib
+    )
+
+    # Real ONNX WASM executable
+    add_executable(piper_wasm_real_integration_test "${CMAKE_CURRENT_SOURCE_DIR}/tests/wasm_integration_main.cpp")
+
+    target_link_libraries(piper_wasm_real_integration_test PRIVATE
+        piper_wasm_real_test
+    )
+
+    target_link_options(piper_wasm_real_integration_test PRIVATE
+        -O0
+        -sALLOW_MEMORY_GROWTH
+        -sMODULARIZE=1
+        -sEXPORT_NAME="createModule"
+        -sWASM_BIGINT=1
+        -sENVIRONMENT=node
+        -sEXPORTED_RUNTIME_METHODS=["stringToUTF8","UTF8ToString","ccall","cwrap","FS"]
+    )
+
+    # Preload espeak-ng data and real model files into WASM virtual filesystem
+    set(_real_data_dir "${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+    set_target_properties(piper_wasm_real_integration_test PROPERTIES
+        LINK_FLAGS "-sALLOW_MEMORY_GROWTH --preload-file=\"${_real_data_dir}/espeak-ng-data@/espeak-ng-data\" --preload-file=\"${_real_data_dir}/en_US-amy-low.onnx@/test-data/en_US-amy-low.onnx\" --preload-file=\"${_real_data_dir}/en_US-amy-low.onnx.json@/test-data/en_US-amy-low.onnx.json\""
+    )
+
+    set_target_properties(piper_wasm_real_integration_test PROPERTIES
+        SUFFIX ".js"
+    )
+
+    # Alias for convenience
+    add_executable(piper_wasm_real_test_wasm ALIAS piper_wasm_real_integration_test)
+endif()

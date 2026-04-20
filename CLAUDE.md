@@ -33,7 +33,16 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - **Python + C extension**: `setup.py` uses scikit-build to call CMake. The CMake build compiles espeak-ng from source and links it into `espeakbridge.c` (Python stable ABI module).
 - **Development install**: `script/setup --dev` then `script/dev_build` (or `python3 setup.py build_ext --inplace`)
 - **Shared CMake module**: `cmake/espeak_ng_external.cmake` — `configure_espeak_ng_external([PREBUILT_DATA_DIR])` requires toolchain vars set by caller. Used by `libpiper/CMakeLists.txt` (native) and `wasm_piper/CMakeLists.txt` (WASM).
+- **Shared CMake module**: `cmake/onnxruntime_external.cmake` — `configure_onnxruntime_external()` mirrors the espeak pattern. Callers can predefine `onnxruntime_iface_lib` INTERFACE target before calling; the function returns early (no-op guard).
 - **WASM build**: `cmake -B wasm_piper/build -S wasm_piper` (uses `find_emscripten.cmake` before `project()` for auto-download + compiler detection).
+- **WASM onnxruntime**: Real onnxruntime is x86_64 Linux only — not WASM. Compile `mock_onnxruntime.cpp` directly into the target and define a no-op `onnxruntime_iface_lib` before `configure_onnxruntime_external()` to skip download.
+- **ONNX Runtime Web (Node.js)**: Use `ort.env.wasm.numThreads = 1` to avoid thread affinity errors on headless servers. Import via `const ort = require('onnxruntime-web')`.
+- **WASM ONNX (real inference)**: Use `--build_wasm_static_lib` to build ONNX Runtime Web for WASM. Runs `cmake -P cmake/build_ort_web.cmake` — downloads ~2GB and takes 30-60 min, produces `libonnxruntime_webassembly.a` with C/C++ API. Links into WASM targets that define no `MOCK_BUILD`.
+- **WASM test targets**: `piper_wasm_mock_integration_test` (mock ONNX, baseline compatibility) and `piper_wasm_real_integration_test` (real ONNX, requires WASM ONNX build). Both use `wasm_integration_main.cpp`.
+- **WASM tests**: Run `node wasm_piper/tests/test_wasm_integration.js` (mock mode) or `USE_REAL_ONNX=1 node wasm_piper/tests/test_wasm_integration.js` (real ONNX). Real ONNX native test: `cmake -B wasm_piper/build_real -S wasm_piper/tests -DWASM_PIPER_REAL_ONNX=ON -DONNXRUNTIME_DIR=<path>`.
+- **Test voice models**: `en_US-amy-low.onnx` (63MB) in `wasm_piper/tests/data/`. Downloaded from `rhasspy/piper-voices` HuggingFace repo.
+- **ONNX switch**: `piper_impl.hpp` uses `#ifdef MOCK_BUILD` to choose mock vs real ONNX Runtime. Real builds include `<onnxruntime_cxx_api.h>`.
+- **ONNX input shapes**: `input` is `[1, N]` phoneme IDs, `input_lengths` is `[1]` (scalar count), `scales` is `[3]` (noise_scale, length_scale, noise_w). Multi-speaker models also need `sid` as `[1]` speaker ID.
 - **Wheels**: `python3 -m build` or `script/package`
 
 ### CMake ExternalProject Gotchas
@@ -42,6 +51,8 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - `@`-prefixed CMake variable expansion does NOT work for `PATCH_COMMAND` — use a shell script that no-ops on empty args.
 - `CMAKE_CURRENT_SOURCE_DIR` resolves inside the ExternalProject context, not the caller. Use `get_filename_component(_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)` to reach the repo root.
 - `configure_espeak_ng_external()` requires mandatory toolchain vars (`PIPER_ESPEAKNG_UPDATE_DISCONNECTED`, `PIPER_ESPEAKNG_PATCH_SCRIPT`, `PIPER_ESPEAKNG_CMAKE_ARGS`). Set before calling; the function validates and errors if missing.
+- `configure_onnxruntime_external()` checks `if(TARGET onnxruntime_iface_lib)` as a no-op guard — WASM callers predefine it; native callers let the function create it.
+- External library downloads go in `CMAKE_BINARY_DIR/external/` — never in the source tree. Deleting `build/` removes everything and reconfiguration re-downloads.
 - ExternalProject does NOT inherit CMAKE_C/CXX_COMPILER from parent config — must pass via CMAKE_ARGS or env vars. For WASM, set `PIPER_ESPEAKNG_CMAKE_ARGS "-DCMAKE_C_COMPILER=${EMCC_PATH}" "-DCMAKE_CXX_COMPILER=${EMCC_PATH}"`.
 
 ### Running and Testing
@@ -61,6 +72,10 @@ script/test
 
 # Run tests directly (skip slow Chinese phonemizer test)
 pytest tests/
+
+# Synthesize audio for comparison (native vs WASM)
+python3 wasm_piper/tests/synthesize.py model.onnx model.onnx.json "text" output.wav
+node wasm_piper/tests/synthesize_node.js model.onnx model.onnx.json "text" output.wav
 ```
 
 The test suite (`tests/`) includes:
@@ -87,3 +102,4 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - **Multi-speaker voices**: `num_speakers > 1` in config, `sid` input required for inference.
 - **Phoneme types**: `espeak` (default), `text` (raw IPA), `pinyin` (Chinese g2pW).
 - **espeak-ng data injection (WASM)**: Pre-compiled data files from a native build are copied into the espeak-ng source tree via `cmake/patch_espeak_data.sh` (PATCH_COMMAND). Never try to run the espeak-ng WASM binary to generate data.
+ - **ONNX CPU vs WASM audio**: When running the same ONNX model on CPU (onnxruntime) vs WASM (onnxruntime-web), floating-point divergence is significant — cosine similarity of raw waveforms was ~0.07 for identical inputs. Use perceptual metrics (openl3) for meaningful comparison, not sample-wise similarity.
