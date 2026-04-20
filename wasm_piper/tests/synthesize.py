@@ -3,15 +3,25 @@
 Produces a WAV file from text using the Piper voice model.
 """
 import json
+import os
 import struct
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
 
-ESPEAK_BIN = "/mnt/agent_workspace/piper1-gpl-claude/build/espeak_ng-install/bin/espeak-ng"
-ESPEAK_DATA = "/mnt/agent_workspace/piper1-gpl-claude/wasm_piper/tests/data/espeak-ng-data"
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_BUILD_DIR = _REPO_ROOT / "build"
+_DATA_DIR = Path(__file__).resolve().parent / "data"
+
+ESPEAK_BIN = os.environ.get(
+    "ESPEAK_BIN", str(_BUILD_DIR / "espeak_ng-install" / "bin" / "espeak-ng")
+)
+ESPEAK_DATA = os.environ.get(
+    "ESPEAK_DATA", str(_DATA_DIR / "espeak-ng-data")
+)
 
 
 def phonemize(text: str) -> str:

@@ -9,10 +9,14 @@
 
 const { spawnSync } = require('child_process');
 const { writeFileSync } = require('fs');
+const path = require('path');
 const ort = require('onnxruntime-web');
 
-const ESPEAK_BIN = '/mnt/agent_workspace/piper1-gpl-claude/build/espeak_ng-install/bin/espeak-ng';
-const ESPEAK_DATA = '/mnt/agent_workspace/piper1-gpl-claude/wasm_piper/tests/data/espeak-ng-data';
+const ROOT = path.resolve(__dirname, '..', '..');
+const DATA_DIR = path.join(__dirname, 'data');
+
+const ESPEAK_BIN = process.env.ESPEAK_BIN || path.join(ROOT, 'build', 'espeak_ng-install', 'bin', 'espeak-ng');
+const ESPEAK_DATA = process.env.ESPEAK_DATA || path.join(DATA_DIR, 'espeak-ng-data');
 
 // Set WASM paths for onnxruntime-web
 ort.env.wasm.numThreads = 1;

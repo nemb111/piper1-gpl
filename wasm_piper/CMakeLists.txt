@@ -46,6 +46,10 @@ set(ESPEAKNG_DATA_PREBUILT "${CMAKE_CURRENT_SOURCE_DIR}/data" CACHE PATH "Pre-bu
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/espeak_ng_external.cmake)
 configure_espeak_ng_external(${ESPEAKNG_DATA_PREBUILT})
 
+# For WASM prebuilt builds, ucd-tools is built but not installed separately.
+# Add its library as an imported target so we can link it into WASM targets.
+set(ESPEAKNG_UCD_LIB "${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/src/ucd-tools/libucd.a" CACHE FILEPATH "ucd-tools WASM static library")
+
 # ── ONNX Runtime mock interface (real onnxruntime is x86_64 Linux .so, not WASM) ──
 
 add_library(onnxruntime_iface_lib INTERFACE)
@@ -69,7 +73,6 @@ target_include_directories(piper_wasm_compile_test PUBLIC
 
 target_link_libraries(piper_wasm_compile_test PUBLIC
     onnxruntime_iface_lib
-    espeakng_iface_lib
 )
 
 # ── WASM executable (produces .wasm) ─────────────────────
@@ -77,6 +80,8 @@ add_executable(piper_wasm_compile_test_wasm wasm_main.cpp)
 
 target_link_libraries(piper_wasm_compile_test_wasm PRIVATE
     piper_wasm_compile_test
+    "${CMAKE_BINARY_DIR}/espeak_ng-install/lib/libespeak-ng.a"
+    "${ESPEAKNG_UCD_LIB}"
 )
 
 target_link_options(piper_wasm_compile_test_wasm PRIVATE
@@ -93,9 +98,8 @@ add_executable(piper_wasm_mock_integration_test "${CMAKE_CURRENT_SOURCE_DIR}/tes
 
 target_link_libraries(piper_wasm_mock_integration_test PRIVATE
     piper_wasm_compile_test
-    # Directly link espeak-ng static lib (works around INTERFACE lib resolution)
     "${CMAKE_BINARY_DIR}/espeak_ng-install/lib/libespeak-ng.a"
-    "${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/src/ucd-tools/libucd.a"
+    "${ESPEAKNG_UCD_LIB}"
 )
 
 target_link_options(piper_wasm_mock_integration_test PRIVATE

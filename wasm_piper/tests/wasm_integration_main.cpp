@@ -53,7 +53,7 @@ extern "C" {
 
 EMSCRIPTEN_KEEPALIVE
 int run_integration_test(const char *config_path, const char *model_path,
-      	      	       const char *data_path) {
+                         const char *data_path) {
     int sr = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 0, data_path, espeakCHARS_AUTO);
     if (sr < 0) return 1;
 
@@ -75,7 +75,7 @@ int run_integration_test(const char *config_path, const char *model_path,
 
             if (chunk.num_samples > 0) {
                 all_samples.insert(all_samples.end(), chunk.samples,
-                      	       chunk.samples + chunk.num_samples);
+                                   chunk.samples + chunk.num_samples);
             }
             if (chunk.num_phonemes > 0) {
                 for (size_t i = 0; i < (size_t)chunk.num_phonemes; i++) {
@@ -86,28 +86,21 @@ int run_integration_test(const char *config_path, const char *model_path,
         }
     }
 
-    // Build JSON string incrementally using std::string (reliable)
     std::string json;
     json.reserve(2048);
     json += "{\n";
     json += "  \"sample_rate\": " + std::to_string(sample_rate) + ",\n";
-
-    // "  \"phonemes\": \""
     json += "  \"phonemes\": \"";
 
-    // Escape and encode phonemes
     for (size_t i = 0; i < all_phonemes_cp.size(); i++) {
         char32_t cp = all_phonemes_cp[i];
-        if (cp == (char32_t)0) { json += "\\u0000"; }       // PHONEME_SEPARATOR
+        if (cp == (char32_t)0) { json += "\\u0000"; }
         else if (cp == (char32_t)'"') { json += "\\\""; }
         else if (cp == (char32_t)'\\') { json += "\\\\"; }
         else { append_utf8(json, cp); }
     }
 
-    // "\",\n"
     json += "\",\n";
-
-    // "  \"audio_samples\": ["
     json += "  \"audio_samples\": [";
 
     for (size_t i = 0; i < all_samples.size(); i++) {
@@ -139,10 +132,9 @@ int run_integration_test(const char *config_path, const char *model_path,
     return 0;
 }
 
-// Write audio samples to a WAV file (for similarity comparison)
 EMSCRIPTEN_KEEPALIVE
 int run_wav_write(const char *config_path, const char *model_path,
-      	          const char *data_path, const char *wav_path) {
+                  const char *data_path, const char *wav_path) {
     int sr = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 0, data_path, espeakCHARS_AUTO);
     if (sr < 0) return 1;
 
@@ -163,7 +155,7 @@ int run_wav_write(const char *config_path, const char *model_path,
 
             if (chunk.num_samples > 0) {
                 all_samples.insert(all_samples.end(), chunk.samples,
-                      	       chunk.samples + chunk.num_samples);
+                                   chunk.samples + chunk.num_samples);
             }
             if (rc == PIPER_DONE || rc == PIPER_ERR_GENERIC) break;
         }

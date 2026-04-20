@@ -46,9 +46,13 @@ function(configure_espeak_ng_external)
         set(_UCD_STATIC_LIB      ${_ESPEAKNG_BUILD_SRC}/src/ucd-tools/libucd.a)
     endif()
 
-    # WASM-only: remove cached source so PATCH_COMMAND always runs (shallow clone is fast)
+    # Guard with lib existence to avoid re-downloading/rebuilding when build dir already exists.
+    if(EXISTS "${_ESPEAKNG_STATIC_LIB}")
+        return()
+    endif()
     if(_prebuilt)
         file(REMOVE_RECURSE "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external")
+        file(REMOVE_RECURSE "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
     endif()
 
     # UCD include: needed for native builds (ucd-tools source lives in the git clone)
@@ -84,7 +88,6 @@ function(configure_espeak_ng_external)
 
         BUILD_BYPRODUCTS
             ${_ESPEAKNG_STATIC_LIB}
-            ${_UCD_STATIC_LIB}
 
         UPDATE_DISCONNECTED ${PIPER_ESPEAKNG_UPDATE_DISCONNECTED}
     )
@@ -95,15 +98,32 @@ function(configure_espeak_ng_external)
         IMPORTED_LOCATION ${_ESPEAKNG_STATIC_LIB}
     )
 
-    add_library(ucd STATIC IMPORTED)
-    add_dependencies(ucd espeak_ng_external)
-    set_target_properties(ucd PROPERTIES
-        IMPORTED_LOCATION ${_UCD_STATIC_LIB}
-    )
+    if(_prebuilt)
+        # WASM prebuilt: espeak-ng doesn't embed ucd, link separately
+        if(EXISTS "${_UCD_STATIC_LIB}")
+            add_library(ucd STATIC IMPORTED)
+            add_dependencies(ucd espeak_ng_external)
+            set_target_properties(ucd PROPERTIES
+                IMPORTED_LOCATION ${_UCD_STATIC_LIB}
+            )
+        endif()
+        add_library(espeakng_iface_lib INTERFACE)
+        add_dependencies(espeakng_iface_lib espeak_ng_external)
+        target_link_libraries(espeakng_iface_lib INTERFACE espeakng)
+        if(TARGET ucd)
+            target_link_libraries(espeakng_iface_lib INTERFACE ucd)
+        endif()
+    else()
+        add_library(ucd STATIC IMPORTED)
+        add_dependencies(ucd espeak_ng_external)
+        set_target_properties(ucd PROPERTIES
+            IMPORTED_LOCATION ${_UCD_STATIC_LIB}
+        )
 
-    add_library(espeakng_iface_lib INTERFACE)
-    add_dependencies(espeakng_iface_lib espeak_ng_external)
-    target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
+        add_library(espeakng_iface_lib INTERFACE)
+        add_dependencies(espeakng_iface_lib espeak_ng_external)
+        target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
+    endif()
     target_include_directories(espeakng_iface_lib INTERFACE
         ${_ESPEAKNG_INSTALL_DIR}/include
     )

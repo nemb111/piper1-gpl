@@ -9,8 +9,6 @@
 #include "mock_onnxruntime.h"
 #include <gtest/gtest.h>
 
-using namespace MockOrt;
-
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -341,11 +339,10 @@ TEST(MockOrt_SessionTest, RunTest) {
     const char* output_names[] = {"output_0"};
 
     // Run inference
-    std::vector<std::vector<Value>> outputs = session.Run({}, input_names, &input_tensor, 1, output_names, 1);
+    std::vector<Value> outputs = session.Run({}, input_names, &input_tensor, 1, output_names, 1);
 
     EXPECT_FALSE(outputs.empty()) << "Run should return outputs";
-    EXPECT_FALSE(outputs[0].empty()) << "First output should contain tensors";
-    EXPECT_TRUE(outputs[0][0].IsTensor()) << "Output should be a tensor";
+    EXPECT_TRUE(outputs[0].IsTensor()) << "Output should be a tensor";
 }
 
 // =============================================================================
@@ -379,17 +376,15 @@ TEST(MockOrt_IntegrationTest, FullInferencePipelineTest) {
     const char* output_names[] = {"speech", "text"};
 
     // Run inference
-    std::vector<std::vector<Value>> outputs = session.Run({}, input_names, &input_tensor, 1, output_names, 2);
+    std::vector<Value> outputs = session.Run({}, input_names, &input_tensor, 1, output_names, 2);
 
     // Verify outputs
     EXPECT_EQ(outputs.size(), 2) << "Should have 2 outputs";
-    EXPECT_FALSE(outputs[0].empty()) << "First output should contain tensors";
-    EXPECT_FALSE(outputs[1].empty()) << "Second output should contain tensors";
-    EXPECT_TRUE(outputs[0][0].IsTensor()) << "First output should be a tensor";
-    EXPECT_TRUE(outputs[1][0].IsTensor()) << "Second output should be a tensor";
+    EXPECT_TRUE(outputs[0].IsTensor()) << "First output should be a tensor";
+    EXPECT_TRUE(outputs[1].IsTensor()) << "Second output should be a tensor";
 
     // Verify tensor data
-    const float* speech_data = outputs[0][0].GetTensorData_float();
+    const float* speech_data = outputs[0].GetTensorData_float();
     EXPECT_NE(speech_data, nullptr) << "Speech data pointer should not be null";
 }
 

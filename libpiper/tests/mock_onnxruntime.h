@@ -57,6 +57,9 @@ public:
     Env();
     Env(const Env&) = delete;
     Env& operator=(const Env&) = delete;
+    static Env& GetInstance();
+    LoggingLevel GetLevel() const { return level_; }
+    const std::string& GetSessionName() const { return session_name_; }
 private:
     LoggingLevel level_;
     std::string session_name_;
@@ -135,8 +138,8 @@ public:
         val.tensor_shape_.assign(shape, shape + shape_size);
         if constexpr (std::is_same_v<T, int64_t>) {
             val.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-            std::vector<int> temp_data(count);
-            for (size_t i = 0; i < count; i++) temp_data[i] = static_cast<int>(data[i]);
+            std::vector<int64_t> temp_data(count);
+            for (size_t i = 0; i < count; i++) temp_data[i] = data[i];
             val.tensor_data_int64_.swap(temp_data);
         } else {
             val.tensor_data_float_.assign(reinterpret_cast<const float*>(data),
@@ -154,11 +157,25 @@ public:
         else
             return reinterpret_cast<const T*>(tensor_data_float_.data());
     }
+    const int64_t* GetTensorData_int64_t() const { return GetTensorData<int64_t>(); }
+    const float* GetTensorData_float() const { return GetTensorData<float>(); }
+
+    // Convenience aliases with explicit type names
+    static Value CreateTensor_int64_t(const MemoryInfo& mi, const int64_t* data,
+        size_t count, const int64_t* shape, size_t shape_size,
+        ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+        return CreateTensor(mi, data, count, shape, shape_size, type);
+    }
+    static Value CreateTensor_float(const MemoryInfo& mi, const float* data,
+        size_t count, const int64_t* shape, size_t shape_size,
+        ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+        return CreateTensor(mi, data, count, shape, shape_size, type);
+    }
     void* release() { return nullptr; }
     int64_t tensor_data_count_ = 0;
     ONNXTensorElementDataType tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
     std::vector<int64_t> tensor_shape_;
-    std::vector<int> tensor_data_int64_;
+    std::vector<int64_t> tensor_data_int64_;
     std::vector<float> tensor_data_float_;
     static std::vector<Value>& GetLastCreatedTensors() {
         static std::vector<Value> last_created;

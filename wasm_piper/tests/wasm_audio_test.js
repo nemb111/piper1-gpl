@@ -62,32 +62,27 @@ function writeWav(samples, sampleRate, outPath) {
     const fileSize = 44 + dataBytes;
 
     const buf = Buffer.allocUnsafe(fileSize);
-    let offset = 0;
+    let off = 0;
 
-    // RIFF header
-    buf.write('RIFF', offset); offset += 4;
-    buf.writeUInt32LE(fileSize - 8, offset); offset += 4;
-    buf.write('WAVE', offset); offset += 4;
+    buf.write('RIFF', off); off += 4;
+    buf.writeUInt32LE(fileSize - 8, off); off += 4;
+    buf.write('WAVE', off); off += 4;
 
-    // fmt chunk
-    buf.write('fmt ', offset); offset += 4;
-    buf.writeUInt32LE(16, offset); offset += 4; // chunk size
-    buf.writeUInt16LE(3, offset); offset += 2; // float
-    buf.writeUInt16LE(numChannels, offset); offset += 2;
-    buf.writeUInt32LE(sampleRate, offset); offset += 4;
-    buf.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), offset); offset += 4;
-    buf.writeUInt16LE(numChannels * (bitsPerSample / 8), offset); offset += 2;
-    buf.writeUInt16LE(bitsPerSample, offset); offset += 2;
+    buf.write('fmt ', off); off += 4;
+    buf.writeUInt32LE(16, off); off += 4;
+    buf.writeUInt16LE(3, off); off += 2;
+    buf.writeUInt16LE(numChannels, off); off += 2;
+    buf.writeUInt32LE(sampleRate, off); off += 4;
+    buf.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), off); off += 4;
+    buf.writeUInt16LE(numChannels * (bitsPerSample / 8), off); off += 2;
+    buf.writeUInt16LE(bitsPerSample, off); off += 2;
 
     // data chunk
     buf.write('data', offset); offset += 4;
     buf.writeUInt32LE(dataBytes, offset); offset += 4;
 
-    // Write samples as floats
-    for (const s of samples) {
-        buf.writeFloatLE(Math.max(-1, Math.min(1, s)), offset);
-        offset += 4;
-    }
+    // Write samples as floats using Float32Array view (faster than per-sample writes)
+    new Float32Array(buf, 44).set(samples.map(s => Math.max(-1, Math.min(1, s))));
 
     fs.writeFileSync(outPath, buf);
 }
@@ -238,12 +233,14 @@ async function checkSimilarity() {
     console.log(`  Native sample rate: ${nativeRate}`);
     console.log(`  WASM sample rate:   ${wasmRate}`);
 
-    // Extract samples (limit for speed)
-    const numNativeSamples = Math.min(nativeData.length - 44, wasmData.length - 44) / 4;
+    // Extract samples (limit for speed), use data chunk size from WAV header
+    const nativeDataSize = nativeData.readUInt32LE(40);
+    const wasmDataSize = wasmData.readUInt32LE(40);
+    const numSamples = Math.min(nativeDataSize, wasmDataSize) / 4;
     const nativeSamples = [];
     const wasmSamples = [];
 
-    for (let i = 0; i < numNativeSamples; i++) {
+    for (let i = 0; i < numSamples; i++) {
         nativeSamples.push(nativeData.readFloatLE(44 + i * 4));
         wasmSamples.push(wasmData.readFloatLE(44 + i * 4));
     }

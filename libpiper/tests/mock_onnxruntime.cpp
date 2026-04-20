@@ -12,6 +12,10 @@ Env::Env(LoggingLevel level, const std::string& session_name)
 Env::Env(int level, const std::string& session_name)
     : level_(static_cast<LoggingLevel>(level)), session_name_(session_name) {}
 Env::Env() = default;
+Env& Env::GetInstance() {
+    static Env instance;
+    return instance;
+}
 
 MemoryInfo MemoryInfo::CreateCpu(int allocator_type, int mem_type) {
     auto& info = last_created_;
@@ -122,21 +126,25 @@ std::vector<Value> Session::Run(const RunOptions&, const char* const*,
             last_run_outputs_.push_back(output);
         }
     } else {
-        std::vector<float> audio_data(100);
-        for (size_t i = 0; i < audio_data.size(); i++)
-            audio_data[i] = std::sin(2 * M_PI * 440.0 * i / 16000.0);
+        // Cache default 440Hz sine wave to avoid recomputing on every call
+        static std::vector<float> default_audio = []() {
+            std::vector<float> audio_data(100);
+            for (size_t i = 0; i < audio_data.size(); i++)
+                audio_data[i] = std::sin(2 * M_PI * 440.0 * i / 16000.0);
+            return audio_data;
+        }();
         Value audio_out;
         audio_out.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-        audio_out.tensor_data_count_ = audio_data.size();
+        audio_out.tensor_data_count_ = default_audio.size();
         audio_out.tensor_shape_ = {1, 100};
-        audio_out.tensor_data_float_ = audio_data;
+        audio_out.tensor_data_float_ = default_audio;
         last_run_outputs_.push_back(audio_out);
-        std::vector<float> align(10, 256.0f);
+        static std::vector<float> default_align(10, 256.0f);
         Value align_out;
         align_out.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-        align_out.tensor_data_count_ = align.size();
+        align_out.tensor_data_count_ = default_align.size();
         align_out.tensor_shape_ = {1, 10};
-        align_out.tensor_data_float_ = align;
+        align_out.tensor_data_float_ = default_align;
         last_run_outputs_.push_back(align_out);
     }
     return last_run_outputs_;

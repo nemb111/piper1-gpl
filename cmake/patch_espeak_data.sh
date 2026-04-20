@@ -47,7 +47,6 @@ cat > "$SRC_DIR/cmake/_skip_data.cmake" << 'SKIPDATAEOF'
 add_custom_target(data)
 
 set(DATA_DIST_ROOT ${CMAKE_CURRENT_BINARY_DIR})
-set(DATA_DIST_ROOT ${CMAKE_CURRENT_BINARY_DIR})
 set(DATA_DIST_DIR ${DATA_DIST_ROOT}/espeak-ng-data)
 
 # Copy pre-built data files into build directory

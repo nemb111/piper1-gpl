@@ -217,7 +217,7 @@ async function runNativeTest() {
     return new Promise((resolve, reject) => {
         const proc = spawn(NATIVE_TEST, [
             CONFIG_PATH, MODEL_PATH, ESPEAK_DATA
-        ], { timeout: 30000 });
+        ], { timeout: 30000, stdio: ['pipe', 'pipe', 'pipe'] });
 
         let stdout = '';
         let stderr = '';
@@ -334,7 +334,8 @@ async function main() {
     // Build native test
     console.log('Building native test...');
     const buildProc = spawn('cmake', ['--build', 'build_native'], {
-        cwd: path.resolve(__dirname, '..')
+        cwd: path.resolve(__dirname, '..'),
+        stdio: ['pipe', 'pipe', 'pipe'],
     });
     await new Promise((resolve, reject) => {
         buildProc.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Build failed (code ${code})`)));
