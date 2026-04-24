@@ -4,7 +4,7 @@
 # Sets emcc as the C/C++ compiler by auto-detecting it on PATH or downloading it.
 # Guard: if EMCC_PATH was already set, skip to avoid running twice.
 
-if(DEFINED EMCC_PATH)
+if(DEFINED EMCC_PATH AND EXISTS "${EMCC_PATH}")
     return()
 endif()
 
@@ -92,14 +92,16 @@ endif()
 
 get_filename_component(_real_dir "${_EMSDK_DIR}" REALPATH)
 set(EMSDK_ROOT "${_real_dir}" CACHE PATH "Emscripten SDK root")
-set(EMCC_PATH "${_real_dir}/emsdk/upstream/emscripten/emcc" CACHE FILEPATH "Path to emcc" FORCE)
+set(_EMCC_PATH "${_real_dir}/emsdk/upstream/emscripten/emcc")
 
-if(NOT EXISTS "${EMCC_PATH}")
-    message(FATAL_ERROR "emcc not found at ${EMCC_PATH} after install")
+if(NOT EXISTS "${_EMCC_PATH}")
+    message(FATAL_ERROR "emcc not found at ${_EMCC_PATH} after install")
 endif()
 
-set(CMAKE_C_COMPILER "${EMCC_PATH}" CACHE FILEPATH "C compiler (emscripten)" FORCE)
-set(CMAKE_CXX_COMPILER "${EMCC_PATH}" CACHE FILEPATH "C++ compiler (emscripten)" FORCE)
-set(CMAKE_ASM_COMPILER "${EMCC_PATH}" CACHE FILEPATH "ASM compiler (emscripten)" FORCE)
+set(EMCC_PATH "${_EMCC_PATH}" CACHE FILEPATH "Path to emcc" FORCE)
+set(EMCC_PATH "${_EMCC_PATH}")
+set(CMAKE_C_COMPILER "${_EMCC_PATH}" CACHE FILEPATH "C compiler (emscripten)" FORCE)
+set(CMAKE_CXX_COMPILER "${_EMCC_PATH}" CACHE FILEPATH "C++ compiler (emscripten)" FORCE)
+set(CMAKE_ASM_COMPILER "${_EMCC_PATH}" CACHE FILEPATH "ASM compiler (emscripten)" FORCE)
 
 message(STATUS "Emscripten SDK ready: ${EMSDK_ROOT} (${EMSCRIPTEN_VERSION})")

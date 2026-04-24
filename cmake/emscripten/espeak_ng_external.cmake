@@ -11,8 +11,6 @@
 include(${CMAKE_CURRENT_LIST_DIR}/../native/espeak_ng_external.cmake)
 find_package(Patch QUIET)
 
-# Use FindEmscripten for lazy download
-find_package(Emscripten QUIET)
 if(NOT EMCC_PATH)
     message(FATAL_ERROR
         "emcc not found. Set EMSDK_ROOT or ensure emscripten is on PATH. "
@@ -20,11 +18,18 @@ if(NOT EMCC_PATH)
 endif()
 
 function(configure_espeak_ng_emscripten)
-    # ── Step 1: Native build via ExternalProject ──
+    # Path to the emscripten-specific patch for espeak-ng CMake data handling
+    get_filename_component(_EMSCRIPTEN_PATCH "${CMAKE_CURRENT_LIST_DIR}/../cmake/emscripten/cmake-data.patch" ABSOLUTE)
+
     configure_espeak_ng_external()
 
-    # ── Step 2: Cross-compile via ExternalProject (proper CMake target) ──
+    # ── Step 2: Cross-compile via ExternalProject (emscripten toolchain) ──
+    # Restore emscripten for cross build — clear native compiler override
+    set(PIPER_ESPEAKNG_CMAKE_ARGS "")
+    get_filename_component(_EMSCRIPTEN_DIR "${EMCC_PATH}" DIRECTORY)
+    set(EM_CMAKE_FILE "${_EMSCRIPTEN_DIR}/cmake/Modules/Platform/Emscripten.cmake")
     set(_ESPEAKNG_BUILD_DIR "${CMAKE_BINARY_DIR}/espeak_ng")
+    set(_ESPEAKNG_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-install")
     set(_NATIVE_BUILD_SRC "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
 
     ExternalProject_Add(espeak_ng_cross
