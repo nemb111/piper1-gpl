@@ -1,0 +1,68 @@
+# Emscripten module: native build + cross-compile as proper CMake targets.
+#
+# Workflow:
+#   1. Native build via ExternalProject (espeak-ng built with emscripten toolchain)
+#   2. Cross-compile via ExternalProject (rebuilds with toolchain file from native output)
+#
+# Usage:
+#   include(emscripten/espeak_ng_external)
+#   configure_espeak_ng_emscripten()
+
+include(${CMAKE_CURRENT_LIST_DIR}/../native/espeak_ng_external.cmake)
+find_package(Patch QUIET)
+
+# Use FindEmscripten for lazy download
+find_package(Emscripten QUIET)
+if(NOT EMCC_PATH)
+    message(FATAL_ERROR
+        "emcc not found. Set EMSDK_ROOT or ensure emscripten is on PATH. "
+        "Run cmake --build to trigger emscripten download.")
+endif()
+
+function(configure_espeak_ng_emscripten)
+    # ── Step 1: Native build via ExternalProject ──
+    configure_espeak_ng_external()
+
+    # ── Step 2: Cross-compile via ExternalProject (proper CMake target) ──
+    set(_ESPEAKNG_BUILD_DIR "${CMAKE_BINARY_DIR}/espeak_ng")
+    set(_NATIVE_BUILD_SRC "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
+
+    ExternalProject_Add(espeak_ng_cross
+        PREFIX ${_ESPEAKNG_BUILD_DIR}/cross
+        GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
+        GIT_TAG        724808c5a83f9ef95fdd0db886ba7ba537ff224a
+        UPDATE_DISCONNECTED ON
+
+        PATCH_COMMAND
+            ${Patch_EXECUTABLE} -p1 -i "${_EMSCRIPTEN_PATCH}"
+
+        CMAKE_ARGS
+            -DCMAKE_TOOLCHAIN_FILE=${EM_CMAKE_FILE}
+            -DNativeBuild_DIR=${_NATIVE_BUILD_SRC}/build/src
+            -DCMAKE_INSTALL_PREFIX=${_ESPEAKNG_INSTALL_DIR}
+            -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+            -DBUILD_SHARED_LIBS:BOOL=OFF
+
+        BUILD_BYPRODUCTS
+            ${_ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a
+            ${_NATIVE_BUILD_SRC}/src/ucd-tools/libucd.a
+
+        DEPENDS espeak_ng_external
+    )
+
+    # ── Reuse interface library from native module ──
+    # The native module defines espeakng_iface_lib INTERFACE target.
+    # Cross build produces the same outputs, so the interface is shared.
+    if(TARGET espeakng)
+        set_target_properties(espeakng PROPERTIES
+            IMPORTED_LOCATION ${_ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a
+        )
+        add_dependencies(espeakng espeak_ng_cross)
+    endif()
+    if(TARGET ucd)
+        set_target_properties(ucd PROPERTIES
+            IMPORTED_LOCATION ${_NATIVE_BUILD_SRC}/src/ucd-tools/libucd.a
+        )
+        add_dependencies(ucd espeak_ng_cross)
+    endif()
+endfunction()

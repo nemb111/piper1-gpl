@@ -12,10 +12,10 @@ find_package(Python COMPONENTS Development.Module Development.SABIModule REQUIRE
 # ── espeak-ng toolchain vars (native build) ─────────────
 get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON CACHE BOOL "" FORCE)
-set(PIPER_ESPEAKNG_PATCH_SCRIPT "${_repo_root}/cmake/patch_espeak_data.sh" CACHE STRING "" FORCE)
+
 set(PIPER_ESPEAKNG_CMAKE_ARGS)
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/espeak_ng_external.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/native/espeak_ng_external.cmake)
 configure_espeak_ng_external()
 
 set(ESPEAKNG_INSTALL_DIR ${CMAKE_BINARY_DIR}/espeak_ng-install)

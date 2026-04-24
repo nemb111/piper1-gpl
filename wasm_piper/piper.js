@@ -5,8 +5,8 @@
  *   create(model, config, espeakData) -> Piper
  *   piper_free(synth)   // via Piper destructor
  *   defaultSynthesizeOptions(synth) -> { speaker_id, length_scale, noise_scale, noise_w_scale }
- *   synthesizeStart(synth, text, options?) -> PIPER_OK / error
- *   synthesizeNext(synth, chunk) -> PIPER_OK | PIPER_DONE | error
+ *   synthesizeStart(text, options?) -> PIPER_OK / error
+ *   synthesizeNext(chunk) -> PIPER_OK | PIPER_DONE | error
  *
  * Memory management: the Piper class allocates and frees all WASM memory
  * (string buffers, option structs, audio chunk buffers) via RAII-style
@@ -103,9 +103,9 @@ async function loadModule(jsPath, opts = {}) {
  *
  * Usage:
  *   const piper = await Piper.create(module, modelPath, configPath, espeakPath);
- *   const ok = piper.synthStart('hello world');
+ *   const ok = piper.synthesizeStart('hello world');
  *   while (true) {
- *     const chunk = piper.synthNext();
+ *     const chunk = piper.synthesizeNext();
  *     if (chunk.done) break;
  *     console.log(chunk.samples.length, chunk.sampleRate, chunk.isLast);
  *   }
@@ -217,7 +217,7 @@ class Piper {
      * @param {object} [options] - Options struct or plain object
      * @returns {number} PIPER_OK or error code
      */
-    synthStart(text, options) {
+    synthesizeStart(text, options) {
         if (!this._handle) throw new Error('Piper disposed');
 
         // Allocate options struct if plain object provided
@@ -257,7 +257,7 @@ class Piper {
      *   alignments: Int32Array, done: boolean, error: number
      * }}
      */
-    synthNext() {
+    synthesizeNext() {
         const mod = this._mod;
         const chunkPtr = mod._malloc(CHUNK_BUF_SIZE);
 
@@ -283,7 +283,7 @@ class Piper {
         const alignmentsPtr = Number(view.getBigUint64(CHUNK_ALIGNMENTS, true));
         const numAlignments = view.getUint32(CHUNK_NUM_ALIGNMENTS, true);
 
-        // Copy sample data (must copy — invalidated on next synthNext call)
+        // Copy sample data (must copy — invalidated on next synthesizeNext call)
         const samples = samplesPtr
             ? new Float32Array(mod.HEAPU8.buffer.slice(samplesPtr, samplesPtr + numSamples * 4))
             : new Float32Array(0);
@@ -325,8 +325,8 @@ class Piper {
      * @param {object} [options]
      * @returns {{ samples: Float32Array, sampleRate: number, chunks: number }}
      */
-    synthFull(text, options) {
-        const startRc = this.synthStart(text, options);
+    synthesizeFull(text, options) {
+        const startRc = this.synthesizeStart(text, options);
         if (startRc !== PIPER_OK) {
             throw new Error(`piper_synthesize_start failed: ${startRc}`);
         }
@@ -336,7 +336,7 @@ class Piper {
         let sampleRate = 0;
 
         while (true) {
-            const chunk = this.synthNext();
+            const chunk = this.synthesizeNext();
             if (chunk.error) throw new Error(`synthesis error: ${chunk.error}`);
             if (chunk.done) break;
 
@@ -364,14 +364,14 @@ class Piper {
      * @param {object} [options]
      * @yields {{ samples: Float32Array, sampleRate: number, isLast: boolean, ... }}
      */
-    async* synthStream(text, options) {
-        const startRc = this.synthStart(text, options);
+    async* synthesizeStream(text, options) {
+        const startRc = this.synthesizeStart(text, options);
         if (startRc !== PIPER_OK) {
             throw new Error(`piper_synthesize_start failed: ${startRc}`);
         }
 
         while (true) {
-            const chunk = this.synthNext();
+            const chunk = this.synthesizeNext();
             if (chunk.error) throw new Error(`synthesis error: ${chunk.error}`);
             yield chunk;
             if (chunk.done) break;
