@@ -23,6 +23,31 @@ function(configure_espeak_ng_emscripten)
 
     configure_espeak_ng_external()
 
+    # ── Ensure `espeak_ng_external` target exists even if configure_espeak_ng_external
+    #    returned early (lib already present).  The cross-compile step (espeak_ng_cross)
+    #    declares `DEPENDS espeak_ng_external` in ExternalProject_Add — it must exist.
+    if(NOT TARGET espeak_ng_external)
+        add_custom_target(espeak_ng_external)
+    endif()
+
+    # ── Ensure interface targets exist even if configure_espeak_ng_external
+    #    returned early (lib already present).
+    if(NOT TARGET espeakng)
+        set(_ESPEAKNG_STATIC_LIB "${CMAKE_BINARY_DIR}/espeak_ng-install/lib/libespeak-ng.a")
+        add_library(espeakng STATIC IMPORTED)
+        set_target_properties(espeakng PROPERTIES
+            IMPORTED_LOCATION ${_ESPEAKNG_STATIC_LIB}
+        )
+    endif()
+    if(NOT TARGET ucd)
+        set(_NATIVE_BUILD_SRC "${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build")
+        set(_UCD_STATIC_LIB "${_NATIVE_BUILD_SRC}/src/ucd-tools/libucd.a")
+        add_library(ucd STATIC IMPORTED)
+        set_target_properties(ucd PROPERTIES
+            IMPORTED_LOCATION ${_UCD_STATIC_LIB}
+        )
+    endif()
+
     # ── Step 2: Cross-compile via ExternalProject (emscripten toolchain) ──
     # Restore emscripten for cross build — clear native compiler override
     set(PIPER_ESPEAKNG_CMAKE_ARGS "")
@@ -31,6 +56,7 @@ function(configure_espeak_ng_emscripten)
     set(_ESPEAKNG_BUILD_DIR "${CMAKE_BINARY_DIR}/espeak_ng")
     set(_ESPEAKNG_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-install")
     set(_NATIVE_BUILD_SRC "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
+    set(_CROSS_UCD_LIB "${_ESPEAKNG_BUILD_DIR}/cross/src/espeak_ng_cross-build/src/ucd-tools/libucd.a")
 
     ExternalProject_Add(espeak_ng_cross
         PREFIX ${_ESPEAKNG_BUILD_DIR}/cross
@@ -47,10 +73,18 @@ function(configure_espeak_ng_emscripten)
             -DCMAKE_INSTALL_PREFIX=${_ESPEAKNG_INSTALL_DIR}
             -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
             -DBUILD_SHARED_LIBS:BOOL=OFF
+            -DUSE_ASYNC:BOOL=OFF
+            -DUSE_MBROLA:BOOL=OFF
+            -DUSE_LIBSONIC:BOOL=OFF
+            -DUSE_LIBPCAUDIO:BOOL=OFF
+            -DUSE_KLATT:BOOL=OFF
+            -DUSE_SPEECHPLAYER:BOOL=OFF
+            -DEXTRA_cmn:BOOL=ON
+            -DEXTRA_ru:BOOL=ON
 
         BUILD_BYPRODUCTS
             ${_ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a
-            ${_NATIVE_BUILD_SRC}/src/ucd-tools/libucd.a
+            ${_CROSS_UCD_LIB}
 
         DEPENDS espeak_ng_external
     )
@@ -66,8 +100,15 @@ function(configure_espeak_ng_emscripten)
     endif()
     if(TARGET ucd)
         set_target_properties(ucd PROPERTIES
-            IMPORTED_LOCATION ${_NATIVE_BUILD_SRC}/src/ucd-tools/libucd.a
+            IMPORTED_LOCATION ${_CROSS_UCD_LIB}
         )
         add_dependencies(ucd espeak_ng_cross)
+    endif()
+    if(NOT TARGET espeakng_iface_lib)
+        add_library(espeakng_iface_lib INTERFACE)
+        target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
+        target_include_directories(espeakng_iface_lib INTERFACE
+            ${_ESPEAKNG_INSTALL_DIR}/include
+        )
     endif()
 endfunction()

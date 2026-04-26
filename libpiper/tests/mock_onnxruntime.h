@@ -128,6 +128,9 @@ public:
 /* Value */
 class Value {
 public:
+    Value() = default;
+    friend class Session;
+
     template <typename T>
     static Value CreateTensor(const MemoryInfo& /*memory_info*/, const T* data,
                               size_t count, const int64_t* shape, size_t shape_size,
@@ -136,31 +139,17 @@ public:
         val.tensor_type_ = (type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) ? type : ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
         val.tensor_data_count_ = count;
         val.tensor_shape_.assign(shape, shape + shape_size);
-        if constexpr (std::is_same_v<T, int64_t>) {
-            val.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-            std::vector<int64_t> temp_data(count);
-            for (size_t i = 0; i < count; i++) temp_data[i] = data[i];
-            val.tensor_data_int64_.swap(temp_data);
-        } else {
-            val.tensor_data_float_.assign(reinterpret_cast<const float*>(data),
-                                          reinterpret_cast<const float*>(data) + count);
-        }
+        fill_tensor_data(val, data, count, std::is_same<T, int64_t>{});
         GetLastCreatedTensors().push_back(val);
         return val;
     }
     bool IsTensor() const;
     const TensorTypeAndShapeInfo& GetTensorTypeAndShapeInfo() const;
     template <typename T>
-    const T* GetTensorData() const {
-        if constexpr (std::is_same_v<T, int64_t>)
-            return reinterpret_cast<const int64_t*>(tensor_data_int64_.data());
-        else
-            return reinterpret_cast<const T*>(tensor_data_float_.data());
-    }
-    const int64_t* GetTensorData_int64_t() const { return GetTensorData<int64_t>(); }
-    const float* GetTensorData_float() const { return GetTensorData<float>(); }
+    const T* GetTensorData() const;
+    const int64_t* GetTensorData_int64_t() const { return tensor_data_int64_.data(); }
+    const float* GetTensorData_float() const { return tensor_data_float_.data(); }
 
-    // Convenience aliases with explicit type names
     static Value CreateTensor_int64_t(const MemoryInfo& mi, const int64_t* data,
         size_t count, const int64_t* shape, size_t shape_size,
         ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
@@ -172,18 +161,32 @@ public:
         return CreateTensor(mi, data, count, shape, shape_size, type);
     }
     void* release() { return nullptr; }
+
+    static std::vector<Value>& GetLastCreatedTensors() {
+        static std::vector<Value> last_created;
+        return last_created;
+    }
+
     int64_t tensor_data_count_ = 0;
     ONNXTensorElementDataType tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
     std::vector<int64_t> tensor_shape_;
     std::vector<int64_t> tensor_data_int64_;
     std::vector<float> tensor_data_float_;
-    static std::vector<Value>& GetLastCreatedTensors() {
-        static std::vector<Value> last_created;
-        return last_created;
+private:
+    template <typename T>
+    static typename std::enable_if<std::is_same<T, int64_t>::value, void>::type
+    fill_tensor_data(Value& val, const T* data, size_t count, std::true_type) {
+        val.tensor_type_ = ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+        std::vector<int64_t> temp(count);
+        for (size_t i = 0; i < count; i++) temp[i] = data[i];
+        val.tensor_data_int64_ = temp;
     }
-public:
-    Value() = default;
-    friend class Session;
+    template <typename T>
+    static typename std::enable_if<!std::is_same<T, int64_t>::value, void>::type
+    fill_tensor_data(Value& val, const T* data, size_t count, std::false_type) {
+        val.tensor_data_float_.assign(reinterpret_cast<const float*>(data),
+                                      reinterpret_cast<const float*>(data) + count);
+    }
 };
 
 /* RunOptions */

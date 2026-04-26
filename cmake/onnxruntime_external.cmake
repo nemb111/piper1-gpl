@@ -96,6 +96,13 @@ function(configure_onnxruntime_external)
     )
     target_link_libraries(onnxruntime_iface_lib INTERFACE onnxruntime)
 
+    # ── Add libpiper/include if caller sets _repo_root (for piper_impl.hpp) ──
+    if(DEFINED _repo_root)
+        target_include_directories(onnxruntime_iface_lib INTERFACE
+            ${_repo_root}/libpiper/include
+        )
+    endif()
+
     # Export ONNXRUNTIME_DIR for callers that need it (e.g. install).
     set(ONNXRUNTIME_DIR "${_OR_DIR}" PARENT_SCOPE)
 endfunction()

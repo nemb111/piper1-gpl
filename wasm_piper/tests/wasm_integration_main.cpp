@@ -54,10 +54,29 @@ extern "C" {
 EMSCRIPTEN_KEEPALIVE
 int run_integration_test(const char *config_path, const char *model_path,
                          const char *data_path) {
-    int sr = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 0, data_path, espeakCHARS_AUTO);
+#ifdef __EMSCRIPTEN__
+    // Ensure /espeak-ng-data directory structure exists for espeak-ng internal file ops.
+    // The actual data files are mounted via --preload-file in CMake.
+    emscripten_run_script_string(
+        "try { "
+        "  if (!FS.analyzePath('/espeak-ng-data').exists) { "
+        "    FS.mkdir('/espeak-ng-data'); "
+        "    FS.mkdir('/espeak-ng-data/voices'); "
+        "    FS.mkdir('/espeak-ng-data/voices/!v'); "
+        "  } "
+        "} catch(e) { if(typeof console !== 'undefined') console.warn('FS init:', e); }"
+    );
+#endif
+
+    const char *effective_data = data_path;
+    if (!data_path || strlen(data_path) == 0) {
+        effective_data = "/espeak-ng-data";
+    }
+
+    int sr = espeak_Initialize(AUDIO_OUTPUT_SYNCHRONOUS, 0, effective_data, espeakCHARS_AUTO);
     if (sr < 0) return 1;
 
-    piper_synthesizer *synth = piper_create(model_path, config_path, data_path);
+    piper_synthesizer *synth = piper_create(model_path, config_path, effective_data);
     if (!synth) return 2;
 
     piper_synthesize_options opts = piper_default_synthesize_options(synth);

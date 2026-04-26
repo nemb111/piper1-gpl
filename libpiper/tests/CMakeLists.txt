@@ -42,6 +42,8 @@ target_include_directories(piper_compile_test PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/../include"
 )
 
+target_compile_definitions(piper_compile_test PRIVATE MOCK_BUILD)
+
 target_link_libraries(piper_compile_test mock_onnxruntime espeakng_iface_lib)
 # END - DO NOT MODIFY!!!
 

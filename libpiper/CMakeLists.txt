@@ -14,6 +14,12 @@ set(PIPER_ESPEAKNG_CMAKE_ARGS)
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/native/espeak_ng_external.cmake)
 configure_espeak_ng_external()
 
+# ── Add libpiper/include to espeakng_iface_lib (transitively for piper.cpp) ──
+# json.hpp and uni_algo.h live here and are pulled in by piper_impl.hpp
+target_include_directories(espeakng_iface_lib INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
 # ── onnxruntime (native: real library; WASM: use mock libraries) ──
 
 include(${_repo_root}/cmake/onnxruntime_external.cmake)

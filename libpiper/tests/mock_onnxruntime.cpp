@@ -199,3 +199,9 @@ void mock_session_set_single_output(int64_t shape, const float* data, size_t dat
 }
 
 } // namespace Ort
+
+/* GetTensorData explicit specializations */
+template <>
+const int64_t* Ort::Value::GetTensorData<int64_t>() const { return tensor_data_int64_.data(); }
+template <>
+const float* Ort::Value::GetTensorData<float>() const { return tensor_data_float_.data(); }
