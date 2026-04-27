@@ -55,11 +55,12 @@ function(configure_espeak_ng_external)
 
     ExternalProject_Add(espeak_ng_external
         GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
-        GIT_TAG        724808c5a83f9ef95fdd0db886ba7ba537ff224a
+        GIT_TAG        83cb7ecf6f5f3e66014102b3d4a5823e60182055
         PREFIX         ${_ESPEAKNG_BUILD_DIR}
 
         CMAKE_ARGS
             -DCMAKE_INSTALL_PREFIX=${_ESPEAKNG_INSTALL_DIR}
+            -DCMAKE_INSTALL_LIBDIR=lib
             -DBUILD_SHARED_LIBS:BOOL=OFF
             -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
             -DUSE_ASYNC:BOOL=OFF

@@ -61,16 +61,17 @@ function(configure_espeak_ng_emscripten)
     ExternalProject_Add(espeak_ng_cross
         PREFIX ${_ESPEAKNG_BUILD_DIR}/cross
         GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
-        GIT_TAG        724808c5a83f9ef95fdd0db886ba7ba537ff224a
+        GIT_TAG        83cb7ecf6f5f3e66014102b3d4a5823e60182055
         UPDATE_DISCONNECTED ON
 
-        PATCH_COMMAND
-            ${Patch_EXECUTABLE} -p1 -i "${_EMSCRIPTEN_PATCH}"
+        # PATCH_COMMAND
+        #     ${Patch_EXECUTABLE} -p2 -i "${_EMSCRIPTEN_PATCH}"
 
         CMAKE_ARGS
             -DCMAKE_TOOLCHAIN_FILE=${EM_CMAKE_FILE}
             -DNativeBuild_DIR=${_NATIVE_BUILD_SRC}/build/src
             -DCMAKE_INSTALL_PREFIX=${_ESPEAKNG_INSTALL_DIR}
+            -DCMAKE_INSTALL_LIBDIR=lib
             -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
             -DBUILD_SHARED_LIBS:BOOL=OFF
             -DUSE_ASYNC:BOOL=OFF

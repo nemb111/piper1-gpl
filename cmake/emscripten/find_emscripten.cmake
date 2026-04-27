@@ -6,15 +6,55 @@
 #   EMCC_PATH         - path to the emcc compiler
 #   EMSCRIPTEN_VERSION - Emscripten tag used (e.g. "3.1.64")
 #
-# Download location: <this script's directory>/emscripten_download
+# Download location: <PROJECT_ROOT>/external/emsdk
 # To supply your own SDK, set EMSDK_ROOT before including this file.
 
 # ── Configuration ────────────────────────────────────────────────
 set(EMSCRIPTEN_VERSION "latest" CACHE STRING "Emscripten version to download (e.g. 'latest', '3.1.64')")
-set(_EMSDK_DIR "${CMAKE_CURRENT_LIST_DIR}/emscripten_download")
 
-# ── Attempt detection ───────────────────────────────────────────
-find_program(EMCC_PATH NAMES emcc PATHS ENV PATH NO_CACHE)
+# Always walk up from CMAKE_CURRENT_LIST_DIR to find the project root.
+# CMAKE_CURRENT_LIST_DIR is stable regardless of context:
+#   - Toolchain file: cmake/emscripten/
+#   - Include from project: cmake/emscripten/
+# Either way, ../../ goes from cmake/emscripten/ to repo root.
+get_filename_component(_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../" ABSOLUTE)
+set(_EMSDK_DIR "${_PROJECT_ROOT}/external/emsdk")
+
+# ── User-supplied EMSDK_ROOT override ───────────────────
+if(DEFINED EMSDK_ROOT AND EXISTS "${EMSDK_ROOT}")
+    get_filename_component(_real_dir "${EMSDK_ROOT}" REALPATH)
+    if(EXISTS "${_real_dir}/emsdk.py")
+        message(STATUS "Using user-supplied EMSDK_ROOT: ${_real_dir}")
+        set(_user_emcc "${_real_dir}/emsdk/upstream/emscripten/emcc")
+        if(EXISTS "${_user_emcc}")
+            set(EMCC_PATH "${_user_emcc}")
+        else()
+            find_program(EMCC_PATH NAMES emcc PATHS "${_real_dir}/emsdk/upstream/emscripten" NO_CACHE)
+        endif()
+        set(EMSDK_ROOT "${_real_dir}" CACHE PATH "Emscripten SDK root" FORCE)
+        if(EMCC_PATH)
+            execute_process(COMMAND "${EMCC_PATH}" -v ERROR_VARIABLE _v ERROR_STRIP_TRAILING_WHITESPACE)
+            if(_v MATCHES "emcc \\(Emscripten[^)]+\\)[ ]+([0-9]+\\.[0-9]+\\.[0-9]+)")
+                set(EMSCRIPTEN_VERSION "${CMAKE_MATCH_1}" CACHE STRING "Version" FORCE)
+            endif()
+        endif()
+        message(STATUS "Emscripten SDK ready: ${EMSDK_ROOT} (${EMSCRIPTEN_VERSION})")
+        return()
+    endif()
+endif()
+
+# ── Attempt detection ────────────────────────────────────
+# 1. Check for emcc at known emsdk location (emsdk.py activate doesn't modify PATH)
+if(NOT EMCC_PATH AND EXISTS "${_EMSDK_DIR}/emsdk/upstream/emscripten/emcc")
+    set(EMCC_PATH "${_EMSDK_DIR}/emsdk/upstream/emscripten/emcc")
+    if(NOT DEFINED EMSDK_ROOT)
+        set(EMSDK_ROOT "${_EMSDK_DIR}" CACHE PATH "Emscripten SDK root" FORCE)
+    endif()
+endif()
+# 2. Check PATH
+if(NOT EMCC_PATH)
+    find_program(EMCC_PATH NAMES emcc PATHS ENV PATH NO_CACHE)
+endif()
 
 if(EMCC_PATH)
     execute_process(
@@ -84,6 +124,10 @@ if(NOT EXISTS "${_EMSDK_SRC_DIR}/emsdk.py")
     endif()
     # The tar extracts to emsdk-master/ — rename to emsdk/
     if(EXISTS "${_EMSDK_DIR}/emsdk-master")
+        # Remove leftover emsdk/ dir if it exists (from previous partial run)
+        if(EXISTS "${_EMSDK_DIR}/emsdk")
+            file(REMOVE_RECURSE "${_EMSDK_DIR}/emsdk")
+        endif()
         file(RENAME "${_EMSDK_DIR}/emsdk-master" "${_EMSDK_SRC_DIR}")
     endif()
 endif()
@@ -118,6 +162,13 @@ endif()
 get_filename_component(_real_dir "${_EMSDK_DIR}" REALPATH)
 set(EMSDK_ROOT "${_real_dir}" CACHE PATH "Emscripten SDK root")
 set(EMCC_PATH "${_real_dir}/emsdk/upstream/emscripten/emcc" CACHE FILEPATH "Path to emcc")
+
+# emsdk.py activate modifies env vars in the subprocess, but cmake doesn't see them.
+# So we explicitly set EMCC_PATH from the known emsdk location.
+if(NOT EMCC_PATH OR NOT EXISTS "${EMCC_PATH}")
+    set(EMCC_PATH "${_real_dir}/emsdk/upstream/emscripten/emcc")
+    set(EMCC_PATH "${EMCC_PATH}" CACHE FILEPATH "Path to emcc" FORCE)
+endif()
 
 if(NOT EXISTS "${EMCC_PATH}")
     message(FATAL_ERROR "emcc not found at ${EMCC_PATH} after install")
