@@ -18,8 +18,6 @@ if(NOT EMCC_PATH)
 endif()
 
 function(configure_espeak_ng_emscripten)
-    # Path to the emscripten-specific patch for espeak-ng CMake data handling
-    get_filename_component(_EMSCRIPTEN_PATCH "${CMAKE_CURRENT_LIST_DIR}/../cmake/emscripten/cmake-data.patch" ABSOLUTE)
 
     configure_espeak_ng_external()
 
@@ -53,63 +51,25 @@ function(configure_espeak_ng_emscripten)
     set(PIPER_ESPEAKNG_CMAKE_ARGS "")
     get_filename_component(_EMSCRIPTEN_DIR "${EMCC_PATH}" DIRECTORY)
     set(EM_CMAKE_FILE "${_EMSCRIPTEN_DIR}/cmake/Modules/Platform/Emscripten.cmake")
-    set(_ESPEAKNG_BUILD_DIR "${CMAKE_BINARY_DIR}/espeak_ng")
     set(_ESPEAKNG_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-install")
+    set(_ESPEAKNG_BUILD_DIR "${CMAKE_BINARY_DIR}/espeak_ng")
+
+    # Download & extract to external/ so the source tree lives outside build/
+    get_filename_component(_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
+    set(_ESPEAKNG_EXTERNAL_DIR "${_PROJECT_ROOT}/external/espeak_ng")
+    set(_CROSS_PREFIX "${_ESPEAKNG_EXTERNAL_DIR}/cross")
+    set(_CROSS_SRC_DIR "${_CROSS_PREFIX}/src/espeak_ng_cross")
+    set(_CROSS_BUILD_DIR "${_CROSS_SRC_DIR}-build")
     set(_NATIVE_BUILD_SRC "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
-    set(_CROSS_UCD_LIB "${_ESPEAKNG_BUILD_DIR}/cross/src/espeak_ng_cross-build/src/ucd-tools/libucd.a")
+    set(_CROSS_UCD_LIB "${_CROSS_BUILD_DIR}/src/ucd-tools/libucd.a")
 
-    ExternalProject_Add(espeak_ng_cross
-        PREFIX ${_ESPEAKNG_BUILD_DIR}/cross
-        GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
-        GIT_TAG        83cb7ecf6f5f3e66014102b3d4a5823e60182055
+    configure_espeak_ng_external(
+        TARGET_NAME espeak_ng_cross
         UPDATE_DISCONNECTED ON
-
-        # PATCH_COMMAND
-        #     ${Patch_EXECUTABLE} -p2 -i "${_EMSCRIPTEN_PATCH}"
-
-        CMAKE_ARGS
-            -DCMAKE_TOOLCHAIN_FILE=${EM_CMAKE_FILE}
-            -DNativeBuild_DIR=${_NATIVE_BUILD_SRC}/build/src
-            -DCMAKE_INSTALL_PREFIX=${_ESPEAKNG_INSTALL_DIR}
-            -DCMAKE_INSTALL_LIBDIR=lib
-            -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-            -DBUILD_SHARED_LIBS:BOOL=OFF
-            -DUSE_ASYNC:BOOL=OFF
-            -DUSE_MBROLA:BOOL=OFF
-            -DUSE_LIBSONIC:BOOL=OFF
-            -DUSE_LIBPCAUDIO:BOOL=OFF
-            -DUSE_KLATT:BOOL=OFF
-            -DUSE_SPEECHPLAYER:BOOL=OFF
-            -DEXTRA_cmn:BOOL=ON
-            -DEXTRA_ru:BOOL=ON
-
-        BUILD_BYPRODUCTS
-            ${_ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a
-            ${_CROSS_UCD_LIB}
-
+        PREFIX ${_CROSS_PREFIX}
+        C_FLAGS ""
+        CXX_FLAGS ""
+        EXTRA_CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${EM_CMAKE_FILE} -DNativeBuild_DIR=${_NATIVE_BUILD_SRC}/build/src
         DEPENDS espeak_ng_external
     )
-
-    # ── Reuse interface library from native module ──
-    # The native module defines espeakng_iface_lib INTERFACE target.
-    # Cross build produces the same outputs, so the interface is shared.
-    if(TARGET espeakng)
-        set_target_properties(espeakng PROPERTIES
-            IMPORTED_LOCATION ${_ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a
-        )
-        add_dependencies(espeakng espeak_ng_cross)
-    endif()
-    if(TARGET ucd)
-        set_target_properties(ucd PROPERTIES
-            IMPORTED_LOCATION ${_CROSS_UCD_LIB}
-        )
-        add_dependencies(ucd espeak_ng_cross)
-    endif()
-    if(NOT TARGET espeakng_iface_lib)
-        add_library(espeakng_iface_lib INTERFACE)
-        target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
-        target_include_directories(espeakng_iface_lib INTERFACE
-            ${_ESPEAKNG_INSTALL_DIR}/include
-        )
-    endif()
 endfunction()

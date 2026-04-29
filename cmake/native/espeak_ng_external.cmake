@@ -11,23 +11,91 @@
 #   PIPER_ESPEAKNG_CMAKE_ARGS           — extra CMAKE_ARGS for ExternalProject
 
 include(ExternalProject)
-find_package(Patch QUIET)
+
+# Get common CMAKE_ARGS shared between native and cross-compilation builds
+function(get_espeak_ng_common_cmake_args INSTALL_DIR OUT_VAR)
+    set(${OUT_VAR}
+        -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR}
+        -DCMAKE_INSTALL_LIBDIR=lib
+        -DBUILD_SHARED_LIBS:BOOL=OFF
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
+        -DUSE_ASYNC:BOOL=OFF
+        -DUSE_MBROLA:BOOL=OFF
+        -DUSE_LIBSONIC:BOOL=OFF
+        -DUSE_LIBPCAUDIO:BOOL=OFF
+        -DUSE_KLATT:BOOL=OFF
+        -DUSE_SPEECHPLAYER:BOOL=OFF
+        -DEXTRA_cmn:BOOL=ON
+        -DEXTRA_ru:BOOL=ON
+        PARENT_SCOPE
+    )
+endfunction()
+
+# Create imported targets for espeak-ng libraries
+function(create_espeak_ng_targets TARGET_NAME BUILD_SRC INSTALL_DIR STATIC_LIB UCD_LIB)
+    if(NOT TARGET espeakng)
+        add_library(espeakng STATIC IMPORTED)
+    endif()
+    add_dependencies(espeakng ${TARGET_NAME})
+    set_target_properties(espeakng PROPERTIES
+        IMPORTED_LOCATION ${STATIC_LIB}
+    )
+
+    if(NOT TARGET ucd)
+        add_library(ucd STATIC IMPORTED)
+    endif()
+    add_dependencies(ucd ${TARGET_NAME})
+    set_target_properties(ucd PROPERTIES
+        IMPORTED_LOCATION ${UCD_LIB}
+    )
+
+    if(NOT TARGET espeakng_iface_lib)
+        add_library(espeakng_iface_lib INTERFACE)
+        target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
+        target_include_directories(espeakng_iface_lib INTERFACE
+            ${INSTALL_DIR}/include
+        )
+    endif()
+    add_dependencies(espeakng_iface_lib ${TARGET_NAME})
+endfunction()
 
 function(configure_espeak_ng_external)
-    # ── Mandatory variable check ─────────────────────────────
-    foreach(_var
-        PIPER_ESPEAKNG_UPDATE_DISCONNECTED
-    )
-        if(NOT DEFINED ${_var})
-            message(FATAL_ERROR "Missing mandatory toolchain variable: ${_var}. "
-                    "Set it before calling configure_espeak_ng_external().")
-        endif()
-    endforeach()
+    # Optional parameters for flexibility
+    set(options "")
+    set(oneValueArgs TARGET_NAME UPDATE_DISCONNECTED EXTRA_CMAKE_ARGS_PREFIX PREFIX C_FLAGS CXX_FLAGS)
+    set(multiValueArgs EXTRA_CMAKE_ARGS DEPENDS)
+    cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
-    set(_ESPEAKNG_BUILD_DIR   "${CMAKE_BINARY_DIR}/espeak_ng")
+    # Set defaults
+    if(NOT ARG_TARGET_NAME)
+        set(ARG_TARGET_NAME espeak_ng_external)
+    endif()
+    if(NOT ARG_UPDATE_DISCONNECTED)
+        set(ARG_UPDATE_DISCONNECTED ${PIPER_ESPEAKNG_UPDATE_DISCONNECTED})
+    endif()
+    if(NOT ARG_EXTRA_CMAKE_ARGS_PREFIX)
+        set(ARG_EXTRA_CMAKE_ARGS_PREFIX ${PIPER_ESPEAKNG_CMAKE_ARGS})
+    endif()
+    if(NOT ARG_PREFIX)
+        set(ARG_PREFIX "${CMAKE_BINARY_DIR}/espeak_ng")
+    endif()
+    if(NOT ARG_C_FLAGS)
+        set(ARG_C_FLAGS "-D_FILE_OFFSET_BITS=64 -I${ARG_PREFIX}/src/${ARG_TARGET_NAME}/src/ucd-tools/src/include")
+    endif()
+    if(NOT ARG_CXX_FLAGS)
+        set(ARG_CXX_FLAGS "-D_FILE_OFFSET_BITS=64 -I${ARG_PREFIX}/src/${ARG_TARGET_NAME}/src/ucd-tools/src/include")
+    endif()
+
+    # ── Mandatory variable check ─────────────────────────────
+    if(NOT ARG_UPDATE_DISCONNECTED)
+        message(FATAL_ERROR "Missing mandatory toolchain variable: UPDATE_DISCONNECTED. "
+                "Set it before calling configure_espeak_ng_external().")
+    endif()
+
+    set(_ESPEAKNG_BUILD_DIR   "${ARG_PREFIX}")
     set(_ESPEAKNG_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-install")
 
-    set(_ESPEAKNG_BUILD_SRC  "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
+    set(_ESPEAKNG_BUILD_SRC  "${_ESPEAKNG_BUILD_DIR}/src/${ARG_TARGET_NAME}-build")
 
     if(WIN32)
         set(_ESPEAKNG_STATIC_LIB ${_ESPEAKNG_INSTALL_DIR}/lib/espeak-ng.lib)
@@ -42,61 +110,35 @@ function(configure_espeak_ng_external)
         return()
     endif()
 
-    # ── Compute patch paths ──
-    # Prefer _repo_root set by caller (libpiper sets this), fall back to local dir
-    if(DEFINED _repo_root)
-        get_filename_component(_PROJECT_ROOT "${_repo_root}" ABSOLUTE)
-    elseif(EXISTS "${CMAKE_CURRENT_LIST_DIR}/cmake-data.patch")
-        get_filename_component(_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}" ABSOLUTE)
-    else()
-        get_filename_component(_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
-    endif()
-    set(_CROSS_PATCH "${_PROJECT_ROOT}/cmake/native/cmake-data.patch")
+    # Get common args
+    get_espeak_ng_common_cmake_args(${_ESPEAKNG_INSTALL_DIR} _COMMON_ARGS)
 
-    ExternalProject_Add(espeak_ng_external
+    set(_CMAKE_ARGS ${_COMMON_ARGS})
+    if(ARG_C_FLAGS)
+        list(APPEND _CMAKE_ARGS "-DCMAKE_C_FLAGS=${ARG_C_FLAGS}")
+    endif()
+    if(ARG_CXX_FLAGS)
+        list(APPEND _CMAKE_ARGS "-DCMAKE_CXX_FLAGS=${ARG_CXX_FLAGS}")
+    endif()
+    list(APPEND _CMAKE_ARGS ${ARG_EXTRA_CMAKE_ARGS_PREFIX})
+    list(APPEND _CMAKE_ARGS ${ARG_EXTRA_CMAKE_ARGS})
+
+    ExternalProject_Add(${ARG_TARGET_NAME}
         GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
         GIT_TAG        83cb7ecf6f5f3e66014102b3d4a5823e60182055
         PREFIX         ${_ESPEAKNG_BUILD_DIR}
 
         CMAKE_ARGS
-            -DCMAKE_INSTALL_PREFIX=${_ESPEAKNG_INSTALL_DIR}
-            -DCMAKE_INSTALL_LIBDIR=lib
-            -DBUILD_SHARED_LIBS:BOOL=OFF
-            -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-            -DUSE_ASYNC:BOOL=OFF
-            -DUSE_MBROLA:BOOL=OFF
-            -DUSE_LIBSONIC:BOOL=OFF
-            -DUSE_LIBPCAUDIO:BOOL=OFF
-            -DUSE_KLATT:BOOL=OFF
-            -DUSE_SPEECHPLAYER:BOOL=OFF
-            -DEXTRA_cmn:BOOL=ON
-            -DEXTRA_ru:BOOL=ON
-            "-DCMAKE_C_FLAGS=-D_FILE_OFFSET_BITS=64 -I${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external/src/ucd-tools/src/include"
-            "-DCMAKE_CXX_FLAGS=-D_FILE_OFFSET_BITS=64 -I${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external/src/ucd-tools/src/include"
-            ${PIPER_ESPEAKNG_CMAKE_ARGS}
+            ${_CMAKE_ARGS}
 
         BUILD_BYPRODUCTS
             ${_ESPEAKNG_STATIC_LIB}
+            ${_UCD_STATIC_LIB}
 
-        UPDATE_DISCONNECTED ${PIPER_ESPEAKNG_UPDATE_DISCONNECTED}
+        UPDATE_DISCONNECTED ${ARG_UPDATE_DISCONNECTED}
+
+        DEPENDS ${ARG_DEPENDS}
     )
 
-    add_library(espeakng STATIC IMPORTED)
-    add_dependencies(espeakng espeak_ng_external)
-    set_target_properties(espeakng PROPERTIES
-        IMPORTED_LOCATION ${_ESPEAKNG_STATIC_LIB}
-    )
-
-    add_library(ucd STATIC IMPORTED)
-    add_dependencies(ucd espeak_ng_external)
-    set_target_properties(ucd PROPERTIES
-        IMPORTED_LOCATION ${_UCD_STATIC_LIB}
-    )
-
-    add_library(espeakng_iface_lib INTERFACE)
-    add_dependencies(espeakng_iface_lib espeak_ng_external)
-    target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
-    target_include_directories(espeakng_iface_lib INTERFACE
-        ${_ESPEAKNG_INSTALL_DIR}/include
-    )
+    create_espeak_ng_targets(${ARG_TARGET_NAME} ${_ESPEAKNG_BUILD_SRC} ${_ESPEAKNG_INSTALL_DIR} ${_ESPEAKNG_STATIC_LIB} ${_UCD_STATIC_LIB})
 endfunction()
