@@ -8,17 +8,14 @@
 #   configure_onnxruntime_web_external()
 #
 # Required cache vars (set before include):
-#   ONNXRUNTIME_WEB_VERSION  - e.g. "1.22.0"
-#   ONNXRUNTIME_WEB_HASH     - SHA256 of the tarball
+#   ONNXRUNTIME_WEB_VERSION  - e.g. "1.22.0" (git tag)
 #
 # After configure, link against onnxruntime_web_iface_lib.
 
 include(ExternalProject)
 
 # Defaults (set before including this module)
-set(ONNXRUNTIME_WEB_VERSION "1.22.0" CACHE STRING "ONNX Runtime version for WASM build")
-set(ONNXRUNTIME_WEB_HASH   "08b078eb7afbf376064b2b0f1781e3d78151cac0592988a0c0ec78bf72fde810"
-    CACHE STRING "SHA256 hash of ONNX Runtime tarball")
+set(ONNXRUNTIME_WEB_VERSION "1.25.0" CACHE STRING "ONNX Runtime version for WASM build (git tag)")
 set(ONNXRUNTIME_WEB_EXTRA_ARGS "" CACHE STRING "Extra args passed to build.sh")
 
 function(configure_onnxruntime_web_external)
@@ -27,11 +24,10 @@ function(configure_onnxruntime_web_external)
         return()
     endif()
 
-    set(_OUT_DIR "${CMAKE_BINARY_DIR}/onnxruntime_web")
-    set(_SRC_DIR "${_OUT_DIR}/src/onnxruntime")
-    set(_LIB_DIR "${_OUT_DIR}/lib")
+    set(_SRC_DIR "${CMAKE_SOURCE_DIR}/external/onnxruntime")
+    set(_LIB_DIR "${_SRC_DIR}")
     set(_LIB_FILE "${_LIB_DIR}/libonnxruntime_webassembly.a")
-    set(_HEADER_DIR "${_OUT_DIR}/include")
+    set(_HEADER_DIR "${CMAKE_SOURCE_DIR}/external/include")
 
     message(STATUS "ONNX Runtime Web: building WASM static library for real ONNX inference")
     message(STATUS "  Version: ${ONNXRUNTIME_WEB_VERSION}")
@@ -40,9 +36,11 @@ function(configure_onnxruntime_web_external)
 
     if(NOT EXISTS "${_LIB_FILE}")
         ExternalProject_Add(onnxruntime_web_external
-            URL "https://github.com/microsoft/onnxruntime/archive/refs/tags/v${ONNXRUNTIME_WEB_VERSION}.tar.gz"
-            URL_HASH "SHA256=${ONNXRUNTIME_WEB_HASH}"
-            PREFIX "${_OUT_DIR}"
+            GIT_REPOSITORY "https://github.com/microsoft/onnxruntime.git"
+            GIT_TAG "v${ONNXRUNTIME_WEB_VERSION}"
+            GIT_SHALLOW ON
+            GIT_SUBMODULES_RECURSE ON
+            PREFIX "${CMAKE_BINARY_DIR}/onnxruntime_web"
             SOURCE_DIR "${_SRC_DIR}"
             CONFIGURE_COMMAND ""
             BUILD_IN_SOURCE 1

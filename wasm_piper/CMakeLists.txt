@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/emscripten/espeak_ng_external.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/onnxruntime_web_external.cmake)
 
 # ── Required by configure_espeak_ng_external() called inside configure_espeak_ng_emscripten() ──
 set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON)
@@ -54,3 +55,8 @@ target_link_libraries(piper_wasm
         espeakng_iface_lib
 )
 add_dependencies(piper_wasm espeak_ng_cross)  
+
+configure_onnxruntime_web_external()
+# onnxruntime_web_external.cmake is not included (mock ONNX used for WASM)
+add_custom_target(build_onnxruntime_web ALL)
+add_dependencies(build_onnxruntime_web onnxruntime_web_iface_lib)

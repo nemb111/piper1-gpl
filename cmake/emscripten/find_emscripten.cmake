@@ -60,7 +60,7 @@ if(EXISTS "${_EMSDK_SRC}")
     file(REMOVE_RECURSE "${_EMSDK_SRC}")
 endif()
 file(MAKE_DIRECTORY "${_EMSDK_SRC}")
-execute_process(COMMAND ${CMAKE_COMMAND} -E tar xf "${_EMSDK_ARCHIVE}" --strip-components=1 WORKING_DIRECTORY "${_EMSDK_SRC}")
+execute_process(COMMAND tar xf "${_EMSDK_ARCHIVE}" --strip-components=1 WORKING_DIRECTORY "${_EMSDK_SRC}")
 
 # Install and activate
 message(STATUS "Installing Emscripten ${EMSCRIPTEN_VERSION}...")
