@@ -43,7 +43,7 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - INTERFACE libraries can't be linked (`target_link_libraries` will try to find `-l<name>` and fail). Use INTERFACE only for include paths; link real libraries directly.
 - **WASM tests**: Run `node wasm_piper/tests/test_wasm_integration.js` (mock mode).
 - **ort_shim (WASM ONNX bridge)**: `wasm_piper/shim/src/onnxruntime_cxx_api.h` defines `Ort` namespace forwarding ONNX C++ API to `wasm_piper/shim/src/ort_shim.js` via EM_JS. Session init is async (done externally by JS via `ort_shim_init()`). Input tensors are queued via `ort_shim_set_input_data()` and inference is triggered from JS (`startNextInference()`). The shim replaces the real ONNX Runtime header via include path resolution.
-- **ort_shim test harness**: `wasm_piper/tests/run_piper.js` uses piper_create for setup, then handles ONNX inference entirely from JS — phonemize via `spawnSync` on espeak-ng CLI, run ONNX via `ort.InferenceSession`, write WAV. This avoids C++ path async issues.
+- **ort_shim test harness**: Synthesis from JS uses `wasm_piper/synthesize.js` — phonemize via `spawnSync` on espeak-ng CLI, run ONNX via `ort.InferenceSession`, write WAV.
 - **Test voice models**: `en_US-amy-low.onnx` (63MB) in `wasm_piper/tests/data/`. Downloaded from `rhasspy/piper-voices` HuggingFace repo.
 - **ONNX switch**: `piper_impl.hpp` uses `#ifdef MOCK_BUILD` to choose mock vs real ONNX Runtime. Real builds include `<onnxruntime_cxx_api.h>`.
 - **ONNX input shapes**: `input` is `[1, N]` phoneme IDs, `input_lengths` is `[1]` (scalar count), `scales` is `[3]` (noise_scale, length_scale, noise_w). Multi-speaker models also need `sid` as `[1]` speaker ID.
@@ -79,12 +79,8 @@ script/test
 # Run tests directly (skip slow Chinese phonemizer test)
 pytest tests/
 
-# Synthesize audio for comparison (native vs WASM)
-python3 wasm_piper/tests/synthesize.py model.onnx model.onnx.json "text" output.wav
-node wasm_piper/tests/synthesize_node.js model.onnx model.onnx.json "text" output.wav
-
-# WASM JS test harness (handles ONNX inference from JS to avoid EM_ASYNC_JS crash)
-node wasm_piper/tests/run_piper.js "text to synthesize" output.wav (ort_shim.js require path updated to shim/src/)
+# Synthesize audio (onnxruntime-web, WASM in Node)
+node wasm_piper/synthesize.js model.onnx model.onnx.json "text" output.wav
 ```
 
 The test suite (`tests/`) includes:

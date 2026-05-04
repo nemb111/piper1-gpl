@@ -3,8 +3,11 @@
  * WASM-side piper audio synthesis using onnxruntime-web + espeak-ng.
  * Produces a WAV file from text using the Piper voice model.
  *
- * Uses the same espeak-ng compiled binary for phonemization,
- * and onnxruntime-web for ONNX inference.
+ * Usage: node synthesize.js <model.onnx> <model.onnx.json> <text> [output.wav]
+ *
+ * Environment variables:
+ *   ESPEAK_BIN    - Path to espeak-ng binary (default: build/espeak_ng-install/bin/espeak-ng)
+ *   ESPEAK_DATA   - Path to espeak-ng data directory (default: tests/data/espeak-ng-data)
  */
 
 const { spawnSync } = require('child_process');
@@ -12,14 +15,17 @@ const { writeFileSync } = require('fs');
 const path = require('path');
 const ort = require('onnxruntime-web');
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const DATA_DIR = path.join(__dirname, 'data');
+// ── Paths ───────────────────────────────────────────────────────────
+const __DIR__ = __dirname;                          // wasm_piper/
+const ROOT = path.resolve(__DIR__, '..');           // repo root
+const DATA_DIR = path.join(__DIR__, 'tests', 'data');
 
-const ESPEAK_BIN = process.env.ESPEAK_BIN || path.join(ROOT, 'wasm_piper', 'build', 'espeak_ng-install', 'bin', 'espeak-ng');
+const ESPEAK_BIN = process.env.ESPEAK_BIN || path.join(
+    __DIR__, 'build', 'espeak_ng-install', 'bin', 'espeak-ng'
+);
 const ESPEAK_DATA = process.env.ESPEAK_DATA || path.join(DATA_DIR, 'espeak-ng-data');
 
-// Set WASM paths for onnxruntime-web
-ort.env.wasm.numThreads = 1;
+// ── Helpers ─────────────────────────────────────────────────────────
 
 function phonemize(text) {
     const result = spawnSync(ESPEAK_BIN, ['-v', 'en-us', '--ipa', '--stdout', text], {
@@ -27,7 +33,6 @@ function phonemize(text) {
         env: { ...process.env, ESPEAK_DATA },
         maxBuffer: 1024 * 1024,
     });
-    // First line is IPA text
     return result.stdout.split('\n')[0].trim();
 }
 
@@ -49,6 +54,19 @@ function textToPhonemeIds(text, phonemeIdMap) {
 
     ids.push(2); // EOS
     return ids;
+}
+
+function normalizeAudio(samples) {
+    let peak = 0;
+    for (let i = 0; i < samples.length; i++) {
+        const a = Math.abs(samples[i]);
+        if (a > peak) peak = a;
+    }
+    if (peak > 0) {
+        const gain = 0.707 / peak;
+        for (let i = 0; i < samples.length; i++) samples[i] *= gain;
+    }
+    return samples;
 }
 
 function writeWav(filename, samples, sampleRate) {
@@ -86,9 +104,13 @@ function writeWav(filename, samples, sampleRate) {
     writeFileSync(filename, buf);
 }
 
+// ── Main ────────────────────────────────────────────────────────────
+
 async function synthesize(modelPath, configPath, text, outputPath) {
+    // 1. Load config
     const config = JSON.parse(require('fs').readFileSync(configPath, 'utf8'));
 
+    // 2. Build phoneme ID map
     const phonemeIdMap = {};
     for (const [sym, ids] of Object.entries(config.phoneme_id_map || {})) {
         for (const ch of sym) phonemeIdMap[ch] = ids;
@@ -97,7 +119,11 @@ async function synthesize(modelPath, configPath, text, outputPath) {
     const numSpeakers = config.num_speakers || 1;
     const sr = config.audio.sample_rate;
 
+    // 3. Phonemize + encode
     const allIds = textToPhonemeIds(text, phonemeIdMap);
+    const phonemes = phonemize(text);
+
+    // 4. ONNX inference
     const noiseScale = config.inference?.noise_scale || 0.667;
     const lengthScale = config.inference?.length_scale || 1.0;
     const noiseWScale = config.inference?.noise_w || 0.8;
@@ -117,22 +143,31 @@ async function synthesize(modelPath, configPath, text, outputPath) {
 
     const results = await session.run(feeds);
     const audio = results[Object.keys(results)[0]].data;
-    const samples = Array.from(audio);
+    let samples = Array.from(audio);
 
+    // 5. Normalize audio (-3dB peak)
+    normalizeAudio(samples);
+
+    // 6. Write WAV
     writeWav(outputPath, samples, sr);
 
-    const phonemeStr = phonemize(text);
     console.log(`Synthesized ${samples.length} samples (${(samples.length / sr).toFixed(1)}s) -> ${outputPath}`);
-    console.log(`  Phonemes: ${phonemeStr.substring(0, 60)}`);
+    console.log(`  Phonemes: ${phonemes.substring(0, 60)}`);
     console.log(`  Phoneme IDs: ${allIds.length}`);
 }
 
-const modelPath = process.argv[2] || 'model.onnx';
-const configPath = process.argv[3] || 'model.onnx.json';
-const text = process.argv[4] || 'hello world';
-const outputPath = process.argv[5] || 'wasm_output.wav';
+// ── CLI ─────────────────────────────────────────────────────────────
 
-synthesize(modelPath, configPath, text, outputPath).catch(e => {
-    console.error('Error:', e.message);
-    process.exit(1);
-});
+if (require.main === module) {
+    const modelPath = process.argv[2] || 'model.onnx';
+    const configPath = process.argv[3] || 'model.onnx.json';
+    const text = process.argv[4] || 'hello world';
+    const outputPath = process.argv[5] || 'synthesize.wav';
+
+    synthesize(modelPath, configPath, text, outputPath).catch(e => {
+        console.error('Error:', e.message);
+        process.exit(1);
+    });
+}
+
+module.exports = { synthesize };

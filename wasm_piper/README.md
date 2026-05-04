@@ -36,74 +36,40 @@ This produces `wasm_piper/build/piper_wasm.{js,wasm,data}`.
 
 **Step 2 — Synthesize:**
 ```sh
-cd wasm_piper/tests
-node run_piper.js "Hello from the WASM build" /tmp/output.wav
+cd wasm_piper
+node synthesize.js tests/data/en_US-amy-low.onnx tests/data/en_US-amy-low.onnx.json "Hello from the WASM build" /tmp/output.wav
 ```
 
-## Generating WAV Output Files
+## Synthesizing Audio
 
-### Using the native Python script (real ONNX Runtime, CPU)
-
-This approach runs on the host machine with the real ONNX Runtime. It produces 16-bit PCM WAV files.
+The unified `synthesize.js` script produces 16-bit PCM WAV files using `onnxruntime-web` (WASM) for inference and the compiled `espeak-ng` for phonemization.
 
 ```sh
-cd wasm_piper/tests
+cd wasm_piper
 
+# CMake auto-installs onnxruntime-web into external/node_modules/ on first build.
 # Synthesize "The quick brown fox jumps over the lazy dog"
-python3 synthesize.py \
-  data/en_US-amy-low.onnx \
-  data/en_US-amy-low.onnx.json \
+node synthesize.js \
+  tests/data/en_US-amy-low.onnx \
+  tests/data/en_US-amy-low.onnx.json \
   "The quick brown fox jumps over the lazy dog" \
   output_fox.wav
 ```
 
-**Requirements:** `onnxruntime`, `numpy`
+**Defaults:** Unset arguments default to `model.onnx`, `model.onnx.json`, `"hello world"`, and `synthesize.wav`.
 
-**Defaults:** If no arguments are given, `synthesize.py` uses `model.onnx`, `model.onnx.json`, text `"hello world"`, and output `native_output.wav`.
-
-The espeak-ng binary and data path are resolved automatically (via the repo build directory). Override with environment variables:
+The espeak-ng binary and data path are resolved automatically. Override with environment variables:
 
 ```sh
 ESPEAK_BIN=/path/to/espeak-ng ESPEAK_DATA=/path/to/espeak-ng-data \
-  python3 synthesize.py model.onnx model.onnx.json "text" output.wav
+  node synthesize.js model.onnx model.onnx.json "text" output.wav
 ```
 
-### Using the Node.js script (onnxruntime-web, WASM in Node)
-
-This approach runs inference in Node.js using `onnxruntime-web`. It also produces 16-bit PCM WAV files.
-
-```sh
-cd wasm_piper/tests
-
-# Install the Node.js dependency (once)
-npm install onnxruntime-web
-
-# Synthesize the same text
-node synthesize_node.js \
-  data/en_US-amy-low.onnx \
-  data/en_US-amy-low.onnx.json \
-  "The quick brown fox jumps over the lazy dog" \
-  output_fox.wav
-```
-
-**Defaults:** Same argument pattern as `synthesize.py`. Unset args default to `model.onnx`, `model.onnx.json`, `"hello world"`, and `wasm_output.wav`.
-
-### Using the WASM integration test binary (built WASM, any ONNX mode)
-
-The `piper_wasm_mock_integration_test` target can also write WAV files directly. After building, use Node.js to load the WASM module and call `run_wav_write`:
+The script also exports a `synthesize()` function for programmatic use:
 
 ```js
-// In a Node.js script after loading the WASM Module:
-const wasmModule = await Module({ wasmBinary: wasmBinary });
-const wavPtr = wasmModule._malloc(256);
-wasmModule.stringToUTF8("output_fox.wav", wavPtr, 256);
-const rc = wasmModule._run_wav_write(
-  "/test-data/en_US-amy-low.onnx.json",
-  "/test-data/en_US-amy-low.onnx",
-  "/espeak-ng-data",
-  "output_fox.wav"
-);
-wasmModule._free(wavPtr);
+const { synthesize } = require('./synthesize');
+await synthesize('tests/data/en_US-amy-low.onnx', 'tests/data/en_US-amy-low.onnx.json', 'hello world', 'output.wav');
 ```
 
 ## Understanding Test Modes
@@ -117,6 +83,7 @@ wasmModule._free(wavPtr);
 ```
 wasm_piper/
   CMakeLists.txt              # Main CMake config (emscripten + WASM targets)
+  synthesize.js               # Unified synthesis script (onnxruntime-web + espeak-ng) -> WAV
   shim/
     src/
       onnxruntime_cxx_api.h   # ONNX Runtime C++ API shim (all header-only, replaces real ONNX header)
@@ -125,9 +92,6 @@ wasm_piper/
   build/                      # CMake build output (created by cmake -B)
   tests/
     CMakeLists.txt            # Native test binary for WASM parity comparison
-    run_piper.js              # Full pipeline test harness (ort_shim.js require path updated to shim/src/)
-    synthesize_node.js        # Node.js synthesis (onnxruntime-web) -> WAV
-    synthesize_wasm.js        # WASM synthesis utility (phonemize via espeak-ng CLI + onnxruntime-web inference) -> WAV
     test_wasm_c_api.js        # WASM C API boundary test (symbol exports, struct layout)
     test_wasm_integration.js  # JS test runner (mock ONNX mode)
     wasm_integration_main.cpp # C++ entry point (native + WASM)

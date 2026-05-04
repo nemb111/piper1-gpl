@@ -9,13 +9,28 @@ include(${SHIM_SRC_DIR}/ort_shim_external.cmake)
 
 project(wasm_piper)
 
+# ── Repo root ──
+get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
+# ── Auto-install onnxruntime-web (WASM JS synthesis script dependency) ──
+get_filename_component(_wasm_piper_dir "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
+get_filename_component(_ort_npm_dir "${_repo_root}/external/node_modules" ABSOLUTE)
+if(NOT EXISTS "${_ort_npm_dir}/onnxruntime-web")
+    file(WRITE "${CMAKE_BINARY_DIR}/.install_ort.sh"
+"#!/bin/sh\nset -e\ncd \"${_wasm_piper_dir}\"\nnpm install\nmkdir -p \"${_ort_npm_dir}\"\ncp -a \"node_modules/.\" \"${_ort_npm_dir}/\"\nrm -rf node_modules\nln -sfn \"${_ort_npm_dir}\" node_modules\n")
+    execute_process(
+        COMMAND sh "${CMAKE_BINARY_DIR}/.install_ort.sh"
+        RESULT_VARIABLE _npm_result
+    )
+    if(NOT _npm_result EQUAL 0)
+        message(FATAL_ERROR "npm install onnxruntime-web failed (exit code ${_npm_result})")
+    endif()
+endif()
+
 enable_language(C)
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# ── Repo root ──
-get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
 # ── Emscripten espeak-ng build ──
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/emscripten/espeak_ng_external.cmake)
