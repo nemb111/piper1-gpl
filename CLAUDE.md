@@ -33,13 +33,19 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - **Python + C extension**: `setup.py` uses scikit-build to call CMake. The CMake build compiles espeak-ng from source and links it into `espeakbridge.c` (Python stable ABI module).
 - **Development install**: `script/setup --dev` then `script/dev_build` (or `python3 setup.py build_ext --inplace`)
 - **Shared CMake module**: `cmake/espeak_ng_external.cmake` — `configure_espeak_ng_external([PREBUILT_DATA_DIR])` requires toolchain vars set by caller. Used by `libpiper/CMakeLists.txt` (native) and `wasm_piper/CMakeLists.txt` (WASM).
-- **Shared CMake module**: `cmake/onnxruntime_external.cmake` — `configure_onnxruntime_external()` mirrors the espeak pattern. Callers can predefine `onnxruntime_iface_lib` INTERFACE target before calling; the function returns early (no-op guard).
+- **Shared CMake module**: `cmake/native/onnxruntime_external.cmake` — `configure_onnxruntime_external()` mirrors the espeak pattern. Callers can predefine `onnxruntime_iface_lib` INTERFACE target before calling; the function returns early (no-op guard).
 - **WASM build**: `cmake -B wasm_piper/build -S wasm_piper` (uses `find_emscripten.cmake` before `project()` for auto-download + compiler detection).
 - **WASM onnxruntime**: Real onnxruntime is x86_64 Linux only — not WASM. Compile `mock_onnxruntime.cpp` directly into the target and define a no-op `onnxruntime_iface_lib` before `configure_onnxruntime_external()` to skip download.
 - **ONNX Runtime Web (Node.js)**: Use `ort.env.wasm.numThreads = 1` to avoid thread affinity errors on headless servers. Import via `const ort = require('onnxruntime-web')`.
 - **WASM ONNX (real inference)**: Use `--build_wasm_static_lib` to build ONNX Runtime Web for WASM. Runs `cmake -P cmake/build_ort_web.cmake` — downloads ~2GB and takes 30-60 min, produces `libonnxruntime_webassembly.a` with C/C++ API. Links into WASM targets that define no `MOCK_BUILD`.
+- **ort_shim moved**: `onnxruntime_cxx_api.h`, `ort_shim.js` → `wasm_piper/shim/src/`. `ort_shim_external.cmake` also moved there. `ort_shim.cpp` deleted (stub with no actual definitions).
+- **ort_shim header-only**: Every definition in `onnxruntime_cxx_api.h` is header-only (EM_JS inline, template methods, inline class bodies). Nothing can move to a `.cpp`.
 - **WASM test targets**: `piper_wasm_mock_integration_test` (mock ONNX, baseline compatibility) and `piper_wasm_real_integration_test` (real ONNX, requires WASM ONNX build). Both use `wasm_integration_main.cpp`.
+- **WASM build**: `cmake -B wasm_piper/build -S wasm_piper`. The `SHIM_SRC_DIR` variable must be set to `${CMAKE_CURRENT_SOURCE_DIR}/shim/src` before including `ort_shim_external.cmake`. INTERFACE include dirs don't always propagate — add `${SHIM_SRC_DIR}` directly to `target_include_directories(piper_wasm)` in the main CMakeLists.txt.
+- INTERFACE libraries can't be linked (`target_link_libraries` will try to find `-l<name>` and fail). Use INTERFACE only for include paths; link real libraries directly.
 - **WASM tests**: Run `node wasm_piper/tests/test_wasm_integration.js` (mock mode) or `USE_REAL_ONNX=1 node wasm_piper/tests/test_wasm_integration.js` (real ONNX). Real ONNX native test: `cmake -B wasm_piper/build_real -S wasm_piper/tests -DWASM_PIPER_REAL_ONNX=ON -DONNXRUNTIME_DIR=<path>`.
+- **ort_shim (WASM ONNX bridge)**: `wasm_piper/shim/src/onnxruntime_cxx_api.h` defines `Ort` namespace forwarding ONNX C++ API to `wasm_piper/shim/src/ort_shim.js` via EM_JS. Session init is async (done externally by JS via `ort_shim_init()`). Input tensors are queued via `ort_shim_set_input_data()` and inference is triggered from JS (`startNextInference()`). The shim replaces the real ONNX Runtime header via include path resolution.
+- **ort_shim test harness**: `wasm_piper/tests/run_piper.js` uses piper_create for setup, then handles ONNX inference entirely from JS — phonemize via `spawnSync` on espeak-ng CLI, run ONNX via `ort.InferenceSession`, write WAV. This avoids C++ path async issues.
 - **Test voice models**: `en_US-amy-low.onnx` (63MB) in `wasm_piper/tests/data/`. Downloaded from `rhasspy/piper-voices` HuggingFace repo.
 - **ONNX switch**: `piper_impl.hpp` uses `#ifdef MOCK_BUILD` to choose mock vs real ONNX Runtime. Real builds include `<onnxruntime_cxx_api.h>`.
 - **ONNX input shapes**: `input` is `[1, N]` phoneme IDs, `input_lengths` is `[1]` (scalar count), `scales` is `[3]` (noise_scale, length_scale, noise_w). Multi-speaker models also need `sid` as `[1]` speaker ID.
@@ -52,6 +58,7 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - `CMAKE_CURRENT_SOURCE_DIR` resolves inside the ExternalProject context, not the caller. Use `get_filename_component(_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)` to reach the repo root.
 - `configure_espeak_ng_external()` requires mandatory toolchain vars (`PIPER_ESPEAKNG_UPDATE_DISCONNECTED`, `PIPER_ESPEAKNG_PATCH_SCRIPT`, `PIPER_ESPEAKNG_CMAKE_ARGS`). Set before calling; the function validates and errors if missing.
 - `configure_onnxruntime_external()` checks `if(TARGET onnxruntime_iface_lib)` as a no-op guard — WASM callers predefine it; native callers let the function create it.
+- When including a CMake module from a subdirectory (e.g. `shim/src/ort_shim_external.cmake`), `CMAKE_CURRENT_SOURCE_DIR` inside the included file resolves to the _caller's_ source dir, not the module's directory. Use caller-set variables (e.g. `SHIM_SRC_DIR`) instead.
 - External library downloads go in `CMAKE_BINARY_DIR/external/` — never in the source tree. Deleting `build/` removes everything and reconfiguration re-downloads.
 - ExternalProject does NOT inherit CMAKE_C/CXX_COMPILER from parent config — must pass via CMAKE_ARGS or env vars. For WASM, set `PIPER_ESPEAKNG_CMAKE_ARGS "-DCMAKE_C_COMPILER=${EMCC_PATH}" "-DCMAKE_CXX_COMPILER=${EMCC_PATH}"`.
 
@@ -76,6 +83,9 @@ pytest tests/
 # Synthesize audio for comparison (native vs WASM)
 python3 wasm_piper/tests/synthesize.py model.onnx model.onnx.json "text" output.wav
 node wasm_piper/tests/synthesize_node.js model.onnx model.onnx.json "text" output.wav
+
+# WASM JS test harness (handles ONNX inference from JS to avoid EM_ASYNC_JS crash)
+node wasm_piper/tests/run_piper.js "text to synthesize" output.wav (ort_shim.js require path updated to shim/src/)
 ```
 
 The test suite (`tests/`) includes:
@@ -102,4 +112,7 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - **Multi-speaker voices**: `num_speakers > 1` in config, `sid` input required for inference.
 - **Phoneme types**: `espeak` (default), `text` (raw IPA), `pinyin` (Chinese g2pW).
 - **espeak-ng data injection (WASM)**: Pre-compiled data files from a native build are copied into the espeak-ng source tree via `cmake/patch_espeak_data.sh` (PATCH_COMMAND). Never try to run the espeak-ng WASM binary to generate data.
- - **ONNX CPU vs WASM audio**: When running the same ONNX model on CPU (onnxruntime) vs WASM (onnxruntime-web), floating-point divergence is significant — cosine similarity of raw waveforms was ~0.07 for identical inputs. Use perceptual metrics (openl3) for meaningful comparison, not sample-wise similarity.
+- **ONNX CPU vs WASM audio**: When running the same ONNX model on CPU (onnxruntime) vs WASM (onnxruntime-web), floating-point divergence is significant — cosine similarity of raw waveforms was ~0.07 for identical inputs. Use perceptual metrics (openl3) for meaningful comparison, not sample-wise similarity.
+- **EM_ASYNC_JS crash in Emscripten 5.0.6**: EM_ASYNC_JS + ASYNCIFY crashes during stack restoration (Asyncify `doRewind`). Keep async logic in JS layer; C++ EM_JS must be synchronous.
+- **WASM piper_audio_chunk layout (32-bit)**: 10 fields at offsets [0,4,8,12,16,20,24,28,32,36] — samples ptr, num_samples, sample_rate, is_last, phonemes ptr, num_phonemes, phoneme_ids ptr, num_phoneme_ids, alignments ptr, num_alignments. Total: 40 bytes.
+- **piper_default_synthesize_options**: Returns struct by value — cannot use `ccall` for this. Must manually write option values to WASM heap (speaker_id as i32 at offset 0, length_scale/f32 at offset 4, noise_scale/f32 at offset 8, noise_w/f32 at offset 12).

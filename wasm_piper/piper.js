@@ -136,7 +136,7 @@ class Piper {
                 usingStr(mod, configPath || '', (configPtr) => {
                     usingStr(mod, espeakPath || '', (espeakPtr) => {
                         const handle = mod.ccall(
-                            'piper_wasm_create', 'number',
+                            'piper_create', 'number',
                             ['i8', 'i8', 'i8'],
                             [modelPtr, configPtr, espeakPtr]
                         );
@@ -159,7 +159,7 @@ class Piper {
     /** Release WASM resources. */
     dispose() {
         if (this._handle) {
-            this._mod.ccall('piper_wasm_free', null, ['number'], [this._handle]);
+            this._mod.ccall('piper_free', null, ['number'], [this._handle]);
             this._handle = 0;
         }
     }
@@ -173,7 +173,7 @@ class Piper {
     getDefaultOptions() {
         return usingMem(this._mod, 16, (optsPtr) => {
             this._mod.ccall(
-                'piper_wasm_default_synthesize_options', null,
+                'piper_default_synthesize_options', null,
                 ['number', 'number'],
                 [this._handle, optsPtr]
             );
@@ -236,7 +236,7 @@ class Piper {
         try {
             rc = usingStr(this._mod, text, (textPtr) => {
                 return this._mod.ccall(
-                    'piper_wasm_synthesize_start', 'number',
+                    'piper_synthesize_start', 'number',
                     ['number', 'i8', 'number'],
                     [this._handle, textPtr, optPtr]
                 );
@@ -262,7 +262,7 @@ class Piper {
         const chunkPtr = mod._malloc(CHUNK_BUF_SIZE);
 
         const rc = mod.ccall(
-            'piper_wasm_synthesize_next', 'number',
+            'piper_synthesize_next', 'number',
             ['number', 'number'],
             [this._handle, chunkPtr]
         );

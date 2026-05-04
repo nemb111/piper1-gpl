@@ -15,7 +15,7 @@ const ort = require('onnxruntime-web');
 const ROOT = path.resolve(__dirname, '..', '..');
 const DATA_DIR = path.join(__dirname, 'data');
 
-const ESPEAK_BIN = process.env.ESPEAK_BIN || path.join(ROOT, 'build', 'espeak_ng-install', 'bin', 'espeak-ng');
+const ESPEAK_BIN = process.env.ESPEAK_BIN || path.join(ROOT, 'wasm_piper', 'build', 'espeak_ng-install', 'bin', 'espeak-ng');
 const ESPEAK_DATA = process.env.ESPEAK_DATA || path.join(DATA_DIR, 'espeak-ng-data');
 
 // Set WASM paths for onnxruntime-web

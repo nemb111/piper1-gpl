@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.26)
 
+# ── Auto-detect/download Emscripten SDK before project() ──
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/emscripten/find_emscripten.cmake)
+
+# ── Ort Shim (ONNX Runtime C++ API → onnxruntime-web bridge) ──
+set(SHIM_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shim/src)
+include(${SHIM_SRC_DIR}/ort_shim_external.cmake)
+
 project(wasm_piper)
 
 enable_language(C)
@@ -7,56 +14,41 @@ enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ── Repo root (needed by cmake/emscripten/espeak_ng_external.cmake fallback) ──
+# ── Repo root ──
 get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
+# ── Emscripten espeak-ng build ──
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/emscripten/espeak_ng_external.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/onnxruntime_web_external.cmake)
 
-# ── Required by configure_espeak_ng_external() called inside configure_espeak_ng_emscripten() ──
+get_filename_component(PIPER_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
 set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON)
 configure_espeak_ng_emscripten()
 
-add_custom_target(build_espeak_wasm ALL)
-add_dependencies(build_espeak_wasm espeak_ng_cross)
-
-# ── Add libpiper/include to espeakng_iface_lib (transitively for piper.cpp) ──
-target_include_directories(espeakng_iface_lib INTERFACE
-    ${_repo_root}/libpiper/include
-)
-
-# ── Mock ONNX Runtime (WASM: real ONNX Runtime not available) ──
-# Carries all deps: libpiper/include, libpiper/tests, MOCK_BUILD define.
-
-add_library(mock_onnxruntime
-    ${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests/mock_onnxruntime.cpp
-)
-target_include_directories(mock_onnxruntime PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/tests
-)
-target_compile_definitions(mock_onnxruntime PUBLIC MOCK_BUILD)
-add_dependencies(mock_onnxruntime espeak_ng_cross)
+if(TARGET espeak_ng_cross)
+    add_custom_target(build_espeak_wasm ALL DEPENDS espeak_ng_cross)
+else()
+    add_custom_target(build_espeak_wasm ALL)
+endif()
 
 # ── Piper WASM executable ──
-
-add_executable(piper_wasm piper_wasm.cpp
+# Uses real piper.cpp with ort_shim (ONNX Runtime C++ API shim → onnxruntime-web)
+add_executable(piper_wasm
     ${CMAKE_CURRENT_SOURCE_DIR}/../libpiper/src/piper.cpp
 )
 
 set_target_properties(piper_wasm PROPERTIES
-    LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1"
+    LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -s EXPORT_NAME='piperWasm' -s EXPORTED_FUNCTIONS='[_malloc,_free,_piper_create,_piper_default_synthesize_options,_piper_synthesize_start,_piper_synthesize_next,_piper_free]' -s EXPORTED_RUNTIME_METHODS='[ccall,cwrap,stackAlloc,stackRestore,stackSave,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,HEAP8,HEAPU8,HEAPU16,HEAPU32,HEAPF32,HEAP64,FS]' -s ASYNCIFY=1 -s EXIT_RUNTIME=1 -s WASM_BIGINT=1 -s FILESYSTEM=1 -s INITIAL_MEMORY=2147483648 -s STACK_SIZE=67108864 -s DISABLE_EXCEPTION_CATCHING=0 -s ALLOW_TABLE_GROWTH=1 -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=1 --no-entry --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/tests/data@/"
+    OUTPUT_NAME "piper_wasm"
+    SUFFIX ".js"
 )
 
-# mock_onnxruntime carries: libpiper/include (via espeakng_iface_lib), libpiper/tests, MOCK_BUILD
-# espeakng_iface_lib carries: espeak-ng include + libs
 target_link_libraries(piper_wasm
-    PRIVATE
-        mock_onnxruntime
+    PUBLIC
         espeakng_iface_lib
 )
-add_dependencies(piper_wasm espeak_ng_cross)  
-
-configure_onnxruntime_web_external()
-# onnxruntime_web_external.cmake is not included (mock ONNX used for WASM)
-add_custom_target(build_onnxruntime_web ALL)
-add_dependencies(build_onnxruntime_web onnxruntime_web_iface_lib)
+target_include_directories(piper_wasm PRIVATE
+    ${SHIM_SRC_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${_repo_root}/libpiper/include
+)

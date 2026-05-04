@@ -9,11 +9,6 @@ include(ExternalProject)
 # scikit-build-core will forward Python_* variables
 find_package(Python COMPONENTS Development.Module Development.SABIModule REQUIRED)
 
-# ── espeak-ng toolchain vars (native build) ─────────────
-get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
-set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON CACHE BOOL "" FORCE)
-
-set(PIPER_ESPEAKNG_CMAKE_ARGS)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/native/espeak_ng_external.cmake)
 configure_espeak_ng_external()

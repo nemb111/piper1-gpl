@@ -1,7 +1,7 @@
 /**
  * WASM C API boundary test.
  *
- * Exercises the piper C API via the piper_wasm_* wrapper functions that
+ * Exercises the piper C API via the piper_* wrapper functions that
  * delegate to the real piper_* functions. This verifies that the WASM build
  * of libpiper/src/piper.cpp exposes the same C API declared in piper.h.
  *
@@ -33,9 +33,9 @@ const WASM_ESPEAK = '/espeak-ng-data';
 const useReal = process.argv.includes('--real');
 
 const WASM_JS = path.join(BASE_DIR, 'build',
-    useReal ? 'piper_wasm_capi_test_real.js' : 'piper_wasm_capi_test.js');
+    useReal ? 'piper_capi_test_real.js' : 'piper_capi_test.js');
 const WASM_WASM = path.join(BASE_DIR, 'build',
-    useReal ? 'piper_wasm_capi_test_real.wasm' : 'piper_wasm_capi_test.wasm');
+    useReal ? 'piper_capi_test_real.wasm' : 'piper_capi_test.wasm');
 
 // ── Struct field offsets (64-bit platform, packed) ──
 
@@ -111,14 +111,14 @@ async function loadModule() {
 function testSymbolExports(Module, mode) {
     console.log(`\n--- Test 1: C API symbol exports (${mode}) ---`);
 
-    // All piper_wasm_* wrappers must be exported (extern "C" + EMSCRIPTEN_KEEPALIVE)
+    // All piper_* wrappers must be exported (extern "C" + EMSCRIPTEN_KEEPALIVE)
     // Emscripten adds an underscore prefix to C symbols in JS
     const wrappers = [
-        '_piper_wasm_create',
-        '_piper_wasm_free',
-        '_piper_wasm_default_synthesize_options',
-        '_piper_wasm_synthesize_start',
-        '_piper_wasm_synthesize_next',
+        '_piper_create',
+        '_piper_free',
+        '_piper_default_synthesize_options',
+        '_piper_synthesize_start',
+        '_piper_synthesize_next',
     ];
 
     for (const name of wrappers) {
@@ -130,15 +130,15 @@ function testSymbolExports(Module, mode) {
 }
 
 function testCreateNull(Module) {
-    console.log('\n--- Test 2: piper_wasm_create(NULL) returns NULL ---');
+    console.log('\n--- Test 2: piper_create(NULL) returns NULL ---');
 
-    const result = Module.ccall('piper_wasm_create', 'number',
+    const result = Module.ccall('piper_create', 'number',
         ['i8', 'i8', 'i8'], [0, 0, 0]);
-    assert(result === 0, 'piper_wasm_create(NULL) returns NULL (0)');
+    assert(result === 0, 'piper_create(NULL) returns NULL (0)');
 }
 
 function testCreate(Module) {
-    console.log('\n--- Test 3: piper_wasm_create(model, config, data) ---');
+    console.log('\n--- Test 3: piper_create(model, config, data) ---');
 
     const modelPtr = allocStr(Module, WASM_MODEL);
     const configPtr = allocStr(Module, WASM_CONFIG);
@@ -146,17 +146,17 @@ function testCreate(Module) {
 
     let synth;
     try {
-        synth = Module.ccall('piper_wasm_create', 'number',
+        synth = Module.ccall('piper_create', 'number',
             ['i8', 'i8', 'i8'], [modelPtr, configPtr, dataPtr]);
     } catch (e) {
-        assert(false, `piper_wasm_create did not throw: ${e.message}`);
+        assert(false, `piper_create did not throw: ${e.message}`);
         synth = 0;
     }
 
     if (synth !== undefined && synth !== 0) {
         assert(Number(synth) !== 0, 'returns non-null synthesizer handle');
     } else {
-        assert(false, 'piper_wasm_create returns non-null synthesizer handle');
+        assert(false, 'piper_create returns non-null synthesizer handle');
     }
 
     // Store for later tests
@@ -164,22 +164,22 @@ function testCreate(Module) {
 }
 
 function testFreeNull(Module) {
-    console.log('\n--- Test 4: piper_wasm_free(NULL) is safe ---');
+    console.log('\n--- Test 4: piper_free(NULL) is safe ---');
 
     try {
-        Module.ccall('piper_wasm_free', null, ['number'], [0]);
-        assert(true, 'piper_wasm_free(NULL) does not throw');
+        Module.ccall('piper_free', null, ['number'], [0]);
+        assert(true, 'piper_free(NULL) does not throw');
     } catch (e) {
-        assert(false, `piper_wasm_free(NULL) does not throw: ${e.message}`);
+        assert(false, `piper_free(NULL) does not throw: ${e.message}`);
     }
 }
 
 function testDefaultOptions(Module, synth) {
-    console.log('\n--- Test 5: piper_wasm_default_synthesize_options ---');
+    console.log('\n--- Test 5: piper_default_synthesize_options ---');
 
     const optsPtr = Module._malloc(16);
     try {
-        Module.ccall('piper_wasm_default_synthesize_options', null,
+        Module.ccall('piper_default_synthesize_options', null,
             ['number', 'number'],
             [synth, optsPtr]);
 
@@ -202,28 +202,28 @@ function testDefaultOptions(Module, synth) {
 }
 
 function testSynthesizeStart(Module, synth) {
-    console.log('\n--- Test 6: piper_wasm_synthesize_start ---');
+    console.log('\n--- Test 6: piper_synthesize_start ---');
 
     // The dummy test_voice.onnx model causes espeak-ng to produce
     // "Invalid instruction" messages, but start() should still not crash.
     // With mock ONNX the synthesis itself succeeds even with bad phoneme data.
     try {
         usingStrPtr(Module, 'hello world', (textPtr) => {
-            const rc = Module.ccall('piper_wasm_synthesize_start', 'number',
+            const rc = Module.ccall('piper_synthesize_start', 'number',
                 ['number', 'i8', 'number'],
                 [synth, textPtr, 0]);
             assert(rc === 0 || rc === PIPER_ERR,
                    `returns PIPER_OK(0) or error, got ${rc}`);
         });
-        assert(true, 'piper_wasm_synthesize_start did not throw');
+        assert(true, 'piper_synthesize_start did not throw');
     } catch (e) {
         // espeak-ng may crash with dummy model — acceptable for boundary test
-        assert(true, `piper_wasm_synthesize_start call made (espeak crash expected with dummy model): ${e.message}`);
+        assert(true, `piper_synthesize_start call made (espeak crash expected with dummy model): ${e.message}`);
     }
 }
 
 function testSynthesizeNext(Module, synth) {
-    console.log('\n--- Test 7: piper_wasm_synthesize_next (struct output) ---');
+    console.log('\n--- Test 7: piper_synthesize_next (struct output) ---');
 
     // The dummy test model may cause espeak-ng crashes during synthesis.
     // We verify the struct layout is correct when synthesis succeeds.
@@ -233,12 +233,12 @@ function testSynthesizeNext(Module, synth) {
     let result;
     try {
         result = usingStrPtr(Module, 'hello world', (textPtr) => {
-            const startRc = Module.ccall('piper_wasm_synthesize_start', 'number',
+            const startRc = Module.ccall('piper_synthesize_start', 'number',
                 ['number', 'i8', 'number'],
                 [synth, textPtr, 0]);
             if (startRc !== 0) return { rc: startRc, msg: 'start failed' };
 
-            const rc = Module.ccall('piper_wasm_synthesize_next', 'number',
+            const rc = Module.ccall('piper_synthesize_next', 'number',
                 ['number', 'number'],
                 [synth, chunkPtr]);
             return { rc };
@@ -296,12 +296,12 @@ function testFullLoop(Module, synth) {
 
     try {
         usingStrPtr(Module, 'test loop text', (textPtr) => {
-            Module.ccall('piper_wasm_synthesize_start', 'number',
+            Module.ccall('piper_synthesize_start', 'number',
                 ['number', 'i8', 'number'],
                 [synth, textPtr, 0]);
 
             while (true) {
-                const rc = Module.ccall('piper_wasm_synthesize_next', 'number',
+                const rc = Module.ccall('piper_synthesize_next', 'number',
                     ['number', 'number'],
                     [synth, chunkPtr]);
 
@@ -329,15 +329,15 @@ function testFullLoop(Module, synth) {
 }
 
 function testCleanup(Module, synth) {
-    console.log('\n--- Test 9: piper_wasm_free cleanup ---');
+    console.log('\n--- Test 9: piper_free cleanup ---');
 
     if (synth !== undefined && synth !== 0 && Number(synth) !== 0) {
         try {
-            Module.ccall('piper_wasm_free', null, ['number'], [synth]);
-            assert(true, 'piper_wasm_free(synth) succeeds');
+            Module.ccall('piper_free', null, ['number'], [synth]);
+            assert(true, 'piper_free(synth) succeeds');
         } catch (e) {
             // May crash after corrupted espeak state from dummy model
-            assert(true, `piper_wasm_free called (crash from prior espeak state): ${e.message.split('\n')[0]}`);
+            assert(true, `piper_free called (crash from prior espeak state): ${e.message.split('\n')[0]}`);
         }
     }
 }
@@ -379,7 +379,7 @@ async function main() {
         testFullLoop(Module, synth);
         testCleanup(Module, synth);
     } else {
-        console.log('\n  [SKIP] Remaining tests (piper_wasm_create failed)');
+        console.log('\n  [SKIP] Remaining tests (piper_create failed)');
     }
 
     // Summary

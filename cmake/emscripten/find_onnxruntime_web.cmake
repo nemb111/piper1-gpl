@@ -13,6 +13,32 @@ get_filename_component(_repo_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
 set(_LIB_FILE "${_repo_root}/external/onnxruntime/libonnxruntime_webassembly.a")
 set(_HEADER_DIR "${_repo_root}/external/onnxruntime/include")
 
+# Ensure onnxruntime-web npm package is installed in wasm_piper/
+if(NOT DEFINED onnxruntime_web_npm_dir)
+    get_filename_component(_ort_wasm_dir "${CMAKE_CURRENT_LIST_DIR}/../../wasm_piper" ABSOLUTE)
+else()
+    set(_ort_wasm_dir "${onnxruntime_web_npm_dir}")
+endif()
+if(NOT EXISTS "${_ort_wasm_dir}/node_modules/onnxruntime-web")
+    if(NOT COMMAND npm)
+        message(FATAL_ERROR
+            "onnxruntime-web npm package not found.\n"
+            "Install Node.js and run:\n"
+            "    cd wasm_piper && npm install\n"
+            "Or pass -Donnxruntime_web_npm_dir=/path/to/wasm_piper"
+        )
+    endif()
+    message(STATUS "onnxruntime-web not found — installing in ${_ort_wasm_dir}")
+    execute_process(
+        COMMAND npm install
+        WORKING_DIRECTORY "${_ort_wasm_dir}"
+        RESULT_VARIABLE _npm_result
+    )
+    if(NOT _npm_result EQUAL 0)
+        message(FATAL_ERROR "npm install onnxruntime-web failed (exit code ${_npm_result})")
+    endif()
+endif()
+
 if(TARGET onnxruntime_web_iface_lib)
     return()
 endif()

@@ -40,8 +40,8 @@ const NATIVE_WAV = path.join(DATA_DIR, 'native_output.wav');
 const WASM_WAV = path.join(DATA_DIR, 'wasm_output.wav');
 
 // WASM files (real test target)
-const WASM_JS = path.join(BASE_DIR, 'build', 'piper_wasm_real_test_wasm.js');
-const WASM_WASM = path.join(BASE_DIR, 'build', 'piper_wasm_real_test_wasm.wasm');
+const WASM_JS = path.join(BASE_DIR, 'build', 'piper_real_test_wasm.js');
+const WASM_WASM = path.join(BASE_DIR, 'build', 'piper_real_test_wasm.wasm');
 
 // Native test (mock build - used for phonemization reference)
 const NATIVE_TEST = path.join(BASE_DIR, 'build', 'native_piper_test');

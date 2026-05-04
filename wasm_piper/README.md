@@ -16,22 +16,50 @@ Emscripten will be **auto-detected** or **auto-downloaded** by the CMake build. 
 ### 1. Build (Mock Mode)
 
 ```sh
-cmake -B wasm_piper/build -S wasm_piper
-cmake --build wasm_piper/build --target piper_wasm_compile_test_wasm --target piper_wasm_mock_integration_test
+cmake -B wasm_piper/build -S wasm_piper  # auto-runs npm install if onnxruntime-web not present
+cmake --build wasm_piper/build --target piper_wasm_mock_integration_test
 ```
 
 This builds:
-- `piper_wasm_compile_test_wasm.wasm` -- compilation smoke test
 - `piper_wasm_mock_integration_test.js/.wasm` -- mock ONNX integration test
 
-### 2. Run Tests
+### 2. Generate Audio from WASM Build
 
+The compiled WASM module (`piper_wasm`) can synthesize speech using the C++ path for phonemization (via the `piper_create` / `piper_synthesize_start` APIs) and onnxruntime-web for inference.
+
+**Step 1 — Build:**
 ```sh
-# Mock mode: deterministic output (both sides use mock ONNX)
-cd wasm_piper/tests && USE_REAL_ONNX=0 node test_wasm_integration.js
+cmake -B wasm_piper/build -S wasm_piper
+cmake --build wasm_piper/build --target piper_wasm  # auto-runs npm install if onnxruntime-web not present
+```
+This produces `wasm_piper/build/piper_wasm.{js,wasm,data}`.
 
-# Real mode: actual voice model (requires pre-built WASM ONNX Runtime)
-# cd wasm_piper/tests && USE_REAL_ONNX=1 node test_wasm_integration.js
+**Step 2 — Synthesize:**
+```sh
+cd wasm_piper/tests
+node run_piper.js "Hello from the WASM build" /tmp/output.wav
+```
+
+**Step 2a — Using the Piper JS wrapper:**
+```js
+const { loadModule, Piper } = require('../piper.js');
+const { writeFileSync } = require('fs');
+
+const M = await loadModule(require('path').resolve('../build/piper_wasm.js'));
+const piper = await Piper.create(M, '/en_US-amy-low.onnx', '/en_US-amy-low.onnx.json', '/espeak-ng-data');
+
+const { samples, sampleRate } = piper.synthesizeFull("Hello from the WASM build");
+
+// Write 16-bit PCM WAV
+const buf = Buffer.alloc(44 + samples.length * 2);
+buf.write('RIFF', 0); buf.writeUInt32LE(36 + samples.length * 2, 4); buf.write('WAVE', 8);
+buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
+buf.writeUInt32LE(sampleRate, 24); buf.writeUInt32LE(sampleRate * 2, 28);
+buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
+buf.write('data', 36); buf.writeUInt32LE(samples.length * 2, 40);
+for (let i = 0; i < samples.length; i++) buf.writeInt16LE(Math.round(samples[i] * 32767), 44 + i * 2);
+writeFileSync('/tmp/output.wav', buf);
+piper.dispose();
 ```
 
 ## Generating WAV Output Files
@@ -127,13 +155,20 @@ cmake --build wasm_piper/build_real --target piper_wasm_real_integration_test
 ```
 wasm_piper/
   CMakeLists.txt              # Main CMake config (emscripten + WASM targets)
-  wasm_main.cpp               # Entry point for compilation smoke test
+  shim/
+    src/
+      onnxruntime_cxx_api.h   # ONNX Runtime C++ API shim (all header-only, replaces real ONNX header)
+      ort_shim.js             # JS bridge: ort_shim_* EM_JS → onnxruntime-web
+      ort_shim_external.cmake # CMake: provides onnxruntime_iface_lib INTERFACE target
+  piper.js                    # JS wrapper around compiled WASM (piperWasm module)
   build/                      # CMake build output (created by cmake -B)
   tests/
     CMakeLists.txt            # Native test binary for WASM parity comparison
-    synthesize.py             # Native Python synthesis (real ONNX) -> WAV
+    run_piper.js              # Full pipeline test harness (ort_shim.js require path updated to shim/src/)
     synthesize_node.js        # Node.js synthesis (onnxruntime-web) -> WAV
-    test_wasm_integration.js  # JS test runner (mock + real modes)
+    synthesize_wasm.js        # WASM synthesis utility (phonemize via espeak-ng CLI + onnxruntime-web inference) -> WAV
+    test_wasm_c_api.js        # WASM C API boundary test (symbol exports, struct layout)
+    test_wasm_integration.js  # JS test runner (mock + real ONNX modes)
     wasm_audio_test.js        # Audio similarity comparison (openl3 optional)
     wasm_integration_main.cpp # C++ entry point (native + WASM)
     data/

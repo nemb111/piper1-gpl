@@ -28,24 +28,6 @@ function(configure_espeak_ng_emscripten)
         add_custom_target(espeak_ng_external)
     endif()
 
-    # ── Ensure interface targets exist even if configure_espeak_ng_external
-    #    returned early (lib already present).
-    if(NOT TARGET espeakng)
-        set(_ESPEAKNG_STATIC_LIB "${CMAKE_BINARY_DIR}/espeak_ng-install/lib/libespeak-ng.a")
-        add_library(espeakng STATIC IMPORTED)
-        set_target_properties(espeakng PROPERTIES
-            IMPORTED_LOCATION ${_ESPEAKNG_STATIC_LIB}
-        )
-    endif()
-    if(NOT TARGET ucd)
-        set(_NATIVE_BUILD_SRC "${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build")
-        set(_UCD_STATIC_LIB "${_NATIVE_BUILD_SRC}/src/ucd-tools/libucd.a")
-        add_library(ucd STATIC IMPORTED)
-        set_target_properties(ucd PROPERTIES
-            IMPORTED_LOCATION ${_UCD_STATIC_LIB}
-        )
-    endif()
-
     # ── Step 2: Cross-compile via ExternalProject (emscripten toolchain) ──
     # Restore emscripten for cross build — clear native compiler override
     set(PIPER_ESPEAKNG_CMAKE_ARGS "")
@@ -63,6 +45,11 @@ function(configure_espeak_ng_emscripten)
     set(_NATIVE_BUILD_SRC "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
     set(_CROSS_UCD_LIB "${_CROSS_BUILD_DIR}/src/ucd-tools/libucd.a")
 
+    # Cross-compile needs its own install dir so the EXISTS check doesn't block it
+    set(_CROSS_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-cross-install")
+    set(_CROSS_ESPEAKNG_LIB "${_CROSS_INSTALL_DIR}/lib/libespeak-ng.a")
+    set(_ESPEAKNG_INSTALL_DIR_OVERRIDE "${_CROSS_INSTALL_DIR}")
+
     configure_espeak_ng_external(
         TARGET_NAME espeak_ng_cross
         UPDATE_DISCONNECTED ON
@@ -71,5 +58,27 @@ function(configure_espeak_ng_emscripten)
         CXX_FLAGS ""
         EXTRA_CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${EM_CMAKE_FILE} -DNativeBuild_DIR=${_NATIVE_BUILD_SRC}/build/src
         DEPENDS espeak_ng_external
+    )
+
+    # ── After cross-configure, set up imported targets with cross-compiled paths ──
+    if(NOT TARGET espeakng)
+        add_library(espeakng STATIC IMPORTED)
+        set_target_properties(espeakng PROPERTIES IMPORTED_LOCATION ${_CROSS_ESPEAKNG_LIB})
+    else()
+        set_target_properties(espeakng PROPERTIES IMPORTED_LOCATION ${_CROSS_ESPEAKNG_LIB})
+    endif()
+
+    if(NOT TARGET ucd)
+        add_library(ucd STATIC IMPORTED)
+    endif()
+    set_target_properties(ucd PROPERTIES IMPORTED_LOCATION ${_CROSS_UCD_LIB})
+
+    # ── Ensure espeakng_iface_lib uses cross-compiled targets ──
+    if(NOT TARGET espeakng_iface_lib)
+        add_library(espeakng_iface_lib INTERFACE)
+        target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
+    endif()
+    set_target_properties(espeakng_iface_lib PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${_CROSS_INSTALL_DIR}/include"
     )
 endfunction()

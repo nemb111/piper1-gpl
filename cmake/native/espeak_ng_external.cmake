@@ -93,7 +93,11 @@ function(configure_espeak_ng_external)
     endif()
 
     set(_ESPEAKNG_BUILD_DIR   "${ARG_PREFIX}")
-    set(_ESPEAKNG_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-install")
+    if(NOT DEFINED _ESPEAKNG_INSTALL_DIR_OVERRIDE)
+        set(_ESPEAKNG_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-install")
+    else()
+        set(_ESPEAKNG_INSTALL_DIR "${_ESPEAKNG_INSTALL_DIR_OVERRIDE}")
+    endif()
 
     set(_ESPEAKNG_BUILD_SRC  "${_ESPEAKNG_BUILD_DIR}/src/${ARG_TARGET_NAME}-build")
 

@@ -22,7 +22,7 @@ target_include_directories(espeakng_iface_lib INTERFACE
 
 # ── onnxruntime (native: real library; WASM: use mock libraries) ──
 
-include(${_repo_root}/cmake/onnxruntime_external.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/native/onnxruntime_external.cmake)
 configure_onnxruntime_external()
 
 # ---- libpiper ---

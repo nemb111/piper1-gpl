@@ -35,8 +35,8 @@ const MODE_NAME = useRealOnnx ? 'REAL' : 'MOCK';
 
 // WASM files (target name depends on mode)
 const WASM_TARGET = useRealOnnx
-    ? 'piper_wasm_real_integration_test'
-    : 'piper_wasm_mock_integration_test';
+    ? 'piper_real_integration_test'
+    : 'piper_mock_integration_test';
 const WASM_JS = path.join(BASE_DIR, 'build', `${WASM_TARGET}.js`);
 const WASM_WASM = path.join(BASE_DIR, 'build', `${WASM_TARGET}.wasm`);
 
