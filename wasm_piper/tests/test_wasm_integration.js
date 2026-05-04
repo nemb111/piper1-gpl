@@ -1,13 +1,8 @@
 /**
  * WASM vs Native piper integration test.
  *
- * Two modes:
- * 1. MOCK mode (default): Compares native vs WASM with mock ONNX
- *    - Both builds share identical mock output → verifies build pipeline parity
- * 2. REAL mode (USE_REAL_ONNX=1): Compares native vs WASM with real ONNX
- *    - Uses real voice model → verifies identical inference output
- *
- * In REAL mode, also writes WAV files and computes sample-wise similarity.
+ * Compares native vs WASM with mock ONNX:
+ * Both builds share identical mock output → verifies build pipeline parity.
  */
 
 const fs = require('fs');
@@ -23,29 +18,15 @@ const ESPEAK_DATA = path.join(DATA_DIR, 'espeak-ng-data');
 const MOCK_MODEL = path.join(DATA_DIR, 'test_voice.onnx');
 const MOCK_CONFIG = path.join(DATA_DIR, 'test_voice.onnx.json');
 
-// Real test data (actual voice model)
-const REAL_MODEL = path.join(DATA_DIR, 'en_US-amy-low.onnx');
-const REAL_CONFIG = path.join(DATA_DIR, 'en_US-amy-low.onnx.json');
+const MODEL_PATH = MOCK_MODEL;
+const CONFIG_PATH = MOCK_CONFIG;
+const MODE_NAME = 'MOCK';
 
-// Determine which model to use
-const useRealOnnx = process.env.USE_REAL_ONNX === '1';
-const MODEL_PATH = useRealOnnx ? REAL_MODEL : MOCK_MODEL;
-const CONFIG_PATH = useRealOnnx ? REAL_CONFIG : MOCK_CONFIG;
-const MODE_NAME = useRealOnnx ? 'REAL' : 'MOCK';
-
-// WASM files (target name depends on mode)
-const WASM_TARGET = useRealOnnx
-    ? 'piper_real_integration_test'
-    : 'piper_mock_integration_test';
+const WASM_TARGET = 'piper_mock_integration_test';
 const WASM_JS = path.join(BASE_DIR, 'build', `${WASM_TARGET}.js`);
 const WASM_WASM = path.join(BASE_DIR, 'build', `${WASM_TARGET}.wasm`);
 
-// Native test executable
 const NATIVE_TEST = path.join(BASE_DIR, 'build', 'native_piper_test');
-
-// WAV output files for similarity comparison (real mode only)
-const NATIVE_WAV = useRealOnnx ? path.join(DATA_DIR, 'native_output.wav') : null;
-const WASM_WAV = useRealOnnx ? path.join(DATA_DIR, 'wasm_output.wav') : null;
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -185,15 +166,9 @@ async function runWasmTest() {
     wasmModule.stringToUTF8('/espeak-ng-data', dataPtr, 18);
     const modelPtr = wasmModule._malloc(256);
     // Files are preloaded at specific paths in the WASM FS
-    const modelFsPath = useRealOnnx
-        ? '/test-data/en_US-amy-low.onnx'
-        : '/test-data/test_voice.onnx';
-    const configFsPath = useRealOnnx
-        ? '/test-data/en_US-amy-low.onnx.json'
-        : '/test-data/test_voice.onnx.json';
-    wasmModule.stringToUTF8(modelFsPath, modelPtr, 256);
+    wasmModule.stringToUTF8('/test-data/test_voice.onnx', modelPtr, 256);
     const configPtr = wasmModule._malloc(256);
-    wasmModule.stringToUTF8(configFsPath, configPtr, 256);
+    wasmModule.stringToUTF8('/test-data/test_voice.onnx.json', configPtr, 256);
 
     const rc = wasmModule._run_integration_test(configPtr, modelPtr, dataPtr);
 
@@ -241,76 +216,6 @@ async function runNativeTest() {
 
         proc.on('error', reject);
     });
-}
-
-// ── WAV similarity (real mode only) ─────────────────────────────────────────────────
-
-async function checkWavSimilarity(nativeResult, wasmResult) {
-    if (!useRealOnnx || !NATIVE_WAV || !WASM_WAV) return;
-
-    // Write WAV files
-    if (nativeResult) writeWav(nativeResult.audio_samples, nativeResult.sample_rate, NATIVE_WAV);
-    if (wasmResult) writeWav(wasmResult.audio_samples, wasmResult.sample_rate, WASM_WAV);
-
-    if (!fs.existsSync(NATIVE_WAV) || !fs.existsSync(WASM_WAV)) return;
-
-    console.log('\n=== Audio Similarity (REAL MODE) ===');
-
-    const nativeData = fs.readFileSync(NATIVE_WAV);
-    const wasmData = fs.readFileSync(WASM_WAV);
-
-    console.log(`  Native WAV: ${nativeData.length} bytes`);
-    console.log(`  WASM WAV:   ${wasmData.length} bytes`);
-
-    if (nativeData.length !== wasmData.length) {
-        console.log('  [WARN] WAV file sizes differ');
-        return;
-    }
-
-    // Extract samples (limit for speed)
-    const numSamples = Math.min(nativeData.length - 44, wasmData.length - 44) / 4;
-    const nativeSamples = [];
-    const wasmSamples = [];
-
-    for (let i = 0; i < numSamples; i++) {
-        nativeSamples.push(nativeData.readFloatLE(44 + i * 4));
-        wasmSamples.push(wasmData.readFloatLE(44 + i * 4));
-    }
-
-    // Sample-wise similarity
-    const sim = cosineSimilarity(nativeSamples, wasmSamples);
-    console.log(`  Sample-wise cosine similarity: ${sim.toFixed(6)}`);
-
-    // Max absolute difference
-    let maxDiff = 0;
-    for (let i = 0; i < nativeSamples.length; i++) {
-        const diff = Math.abs(nativeSamples[i] - wasmSamples[i]);
-        if (diff > maxDiff) maxDiff = diff;
-    }
-    console.log(`  Max absolute difference: ${maxDiff.toFixed(6)}`);
-
-    // Optional: openl3 perceptual similarity
-    if (process.env.USE_OPENL3 && nativeSamples.length > 1000) {
-        try {
-            const soundfile = require('soundfile');
-            const openl3 = require('openl3');
-            const { cosine_similarity } = require('scipy');
-
-            const [audio1] = await soundfile.read(NATIVE_WAV);
-            const [audio2] = await soundfile.read(WASM_WAV);
-
-            const [emb1] = await openl3.get_audio_embedding(audio1, nativeResult.sample_rate);
-            const [emb2] = await openl3.get_audio_embedding(audio2, wasmResult.sample_rate);
-
-            const sim = 1 - cosineSimilarity(
-                Array.from(emb1.mean(axis=0)),
-                Array.from(emb2.mean(axis=0))
-            );
-            console.log(`  OpenL3 perceptual similarity: ${sim.toFixed(6)}`);
-        } catch (e) {
-            console.log(`  OpenL3 not available: ${e.message}`);
-        }
-    }
 }
 
 // ── Main ─────────────────────────────────────────────────
@@ -367,9 +272,6 @@ async function main() {
     // Compare results
     console.log('\n=== Comparing Results ===');
     const passed = compareResults('synthesis', nativeResult, wasmResult);
-
-    // WAV similarity (real mode only)
-    await checkWavSimilarity(nativeResult, wasmResult);
 
     // Final verdict
     if (passed) {

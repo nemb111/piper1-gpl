@@ -40,28 +40,6 @@ cd wasm_piper/tests
 node run_piper.js "Hello from the WASM build" /tmp/output.wav
 ```
 
-**Step 2a — Using the Piper JS wrapper:**
-```js
-const { loadModule, Piper } = require('../piper.js');
-const { writeFileSync } = require('fs');
-
-const M = await loadModule(require('path').resolve('../build/piper_wasm.js'));
-const piper = await Piper.create(M, '/en_US-amy-low.onnx', '/en_US-amy-low.onnx.json', '/espeak-ng-data');
-
-const { samples, sampleRate } = piper.synthesizeFull("Hello from the WASM build");
-
-// Write 16-bit PCM WAV
-const buf = Buffer.alloc(44 + samples.length * 2);
-buf.write('RIFF', 0); buf.writeUInt32LE(36 + samples.length * 2, 4); buf.write('WAVE', 8);
-buf.write('fmt ', 12); buf.writeUInt32LE(16, 16); buf.writeUInt16LE(1, 20); buf.writeUInt16LE(1, 22);
-buf.writeUInt32LE(sampleRate, 24); buf.writeUInt32LE(sampleRate * 2, 28);
-buf.writeUInt16LE(2, 32); buf.writeUInt16LE(16, 34);
-buf.write('data', 36); buf.writeUInt32LE(samples.length * 2, 40);
-for (let i = 0; i < samples.length; i++) buf.writeInt16LE(Math.round(samples[i] * 32767), 44 + i * 2);
-writeFileSync('/tmp/output.wav', buf);
-piper.dispose();
-```
-
 ## Generating WAV Output Files
 
 ### Using the native Python script (real ONNX Runtime, CPU)
@@ -133,22 +111,6 @@ wasmModule._free(wavPtr);
 | Mode | ONNX | Use Case | Speed |
 |---|---|---|---|
 | **Mock** | `mock_onnxruntime.cpp` | Build pipeline verification, deterministic output | Fast (no actual inference) |
-| **Real** | Real ONNX Runtime Web | Audio quality verification, cross-platform audio parity | Slow (actual neural inference) |
-
-## Real ONNX WASM Build
-
-For real inference in WASM, build ONNX Runtime Web as a static library first (this takes ~30-60 minutes and downloads ~2GB):
-
-```sh
-cmake -P cmake/build_ort_web.cmake
-```
-
-Then rebuild the WASM target without `MOCK_BUILD` to use the real ONNX:
-
-```sh
-cmake -B wasm_piper/build_real -S wasm_piper
-cmake --build wasm_piper/build_real --target piper_wasm_real_integration_test
-```
 
 ## Directory Layout
 
@@ -160,7 +122,6 @@ wasm_piper/
       onnxruntime_cxx_api.h   # ONNX Runtime C++ API shim (all header-only, replaces real ONNX header)
       ort_shim.js             # JS bridge: ort_shim_* EM_JS → onnxruntime-web
       ort_shim_external.cmake # CMake: provides onnxruntime_iface_lib INTERFACE target
-  piper.js                    # JS wrapper around compiled WASM (piperWasm module)
   build/                      # CMake build output (created by cmake -B)
   tests/
     CMakeLists.txt            # Native test binary for WASM parity comparison
@@ -168,8 +129,7 @@ wasm_piper/
     synthesize_node.js        # Node.js synthesis (onnxruntime-web) -> WAV
     synthesize_wasm.js        # WASM synthesis utility (phonemize via espeak-ng CLI + onnxruntime-web inference) -> WAV
     test_wasm_c_api.js        # WASM C API boundary test (symbol exports, struct layout)
-    test_wasm_integration.js  # JS test runner (mock + real ONNX modes)
-    wasm_audio_test.js        # Audio similarity comparison (openl3 optional)
+    test_wasm_integration.js  # JS test runner (mock ONNX mode)
     wasm_integration_main.cpp # C++ entry point (native + WASM)
     data/
       test_voice.onnx         # Mock voice model (empty file, mock ONNX)

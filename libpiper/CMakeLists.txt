@@ -5,22 +5,12 @@ project(piper LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# ── espeak-ng toolchain vars (native build) ─────────────
-get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
-set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON CACHE BOOL "" FORCE)
-
-set(PIPER_ESPEAKNG_CMAKE_ARGS)
+# ── Native build options (versions, flags, etc.) ──
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/native/options.cmake)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/native/espeak_ng_external.cmake)
 configure_espeak_ng_external()
 
-# ── Add libpiper/include to espeakng_iface_lib (transitively for piper.cpp) ──
-# json.hpp and uni_algo.h live here and are pulled in by piper_impl.hpp
-target_include_directories(espeakng_iface_lib INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-
-# ── onnxruntime (native: real library; WASM: use mock libraries) ──
 
 include(${CMAKE_CURRENT_LIST_DIR}/../cmake/native/onnxruntime_external.cmake)
 configure_onnxruntime_external()
@@ -58,40 +48,4 @@ install(
     DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
-# ---- Google Test ----
 
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/refs/heads/main.zip
-)
-# For Windows:
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
-
-# Add tests subdirectory
-# Pass ESPEAKNG_INSTALL_DIR to the tests subdirectory
-set(ESPEAKNG_INSTALL_DIR ${CMAKE_BINARY_DIR}/espeak_ng-install)
-add_subdirectory(tests)
-
-# =============================================================================
-# Documentation: Compile-Test Workflow
-# =============================================================================
-#
-# The mock libraries and test executables are now defined in tests/CMakeLists.txt
-#
-# To perform compile-time API verification:
-#   1. Build with mocks: cmake -B build && cmake --build build
-#   2. Swap mock libraries with real implementations (libespeak-ng.a, onnxruntime.so)
-#   3. Rebuild: cmake --build build
-#   4. Successful compilation = API compatibility verified
-#
-
-# Copy espeak-ng-data
-set(ESPEAKNG_DATA_SRC ${CMAKE_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data)
-set(ESPEAKNG_DATA_DST ${CMAKE_INSTALL_PREFIX}/espeak-ng-data)
-
-install(
-    DIRECTORY ${ESPEAKNG_DATA_SRC}
-    DESTINATION ${CMAKE_INSTALL_PREFIX}
-)

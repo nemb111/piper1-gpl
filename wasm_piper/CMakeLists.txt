@@ -22,7 +22,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/emscripten/espeak_ng_external.cmake
 
 get_filename_component(PIPER_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 
-set(PIPER_ESPEAKNG_UPDATE_DISCONNECTED ON)
 configure_espeak_ng_emscripten()
 
 if(TARGET espeak_ng_cross)

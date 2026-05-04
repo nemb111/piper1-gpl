@@ -1,4 +1,4 @@
-set(EMSCRIPTEN_VERSION "5.0.6" CACHE STRING "Emscripten version")
+include(${CMAKE_CURRENT_LIST_DIR}/options.cmake)
 
 get_filename_component(_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../" ABSOLUTE)
 set(_EMSDK_DIR     "${_PROJECT_ROOT}/external/emsdk-${EMSCRIPTEN_VERSION}")
