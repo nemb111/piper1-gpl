@@ -60,6 +60,10 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - When including a CMake module from a subdirectory (e.g. `shim/src/ort_shim_external.cmake`), `CMAKE_CURRENT_SOURCE_DIR` inside the included file resolves to the _caller's_ source dir, not the module's directory. Use caller-set variables (e.g. `SHIM_SRC_DIR`) instead.
 - External library downloads go in `CMAKE_BINARY_DIR/external/` — never in the source tree. Deleting `build/` removes everything and reconfiguration re-downloads.
 - ExternalProject does NOT inherit CMAKE_C/CXX_COMPILER from parent config — must pass via CMAKE_ARGS or env vars. For WASM, set `PIPER_ESPEAKNG_CMAKE_ARGS "-DCMAKE_C_COMPILER=${EMCC_PATH}" "-DCMAKE_CXX_COMPILER=${EMCC_PATH}"`.
+- CMake's `file(CREATE_LINK)` fails in the Emscripten toolchain context — use `execute_process(COMMAND sh -c "ln -sfn ...")` instead.
+- In `wasm_piper/CMakeLists.txt`, `_repo_root` must be defined via `get_filename_component` before any block (including auto-install) that references it.
+- `wasm_piper/node_modules` is a symlink to `external/node_modules/`. CMake auto-installs onnxruntime-web there on first configure.
+- Two mount points exist for the same repo: `/mnt/agent_workspace/` and `/home/claude/workspace/`. Ensure `pwd` and CMake `WORKING_DIRECTORY` align to avoid path mismatches.
 
 ### Running and Testing
 

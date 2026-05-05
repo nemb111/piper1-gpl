@@ -7,6 +7,10 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/emscripten/find_emscripten.cmake)
 set(SHIM_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shim/src)
 include(${SHIM_SRC_DIR}/ort_shim_external.cmake)
 
+# ── Download pinned Node.js/npm (bundles npm) ──
+include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/emscripten/find_npm.cmake)
+CONFIGURE_NPM_EXTERNAL()
+
 project(wasm_piper)
 
 # ── Repo root ──
@@ -16,8 +20,9 @@ get_filename_component(_repo_root "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 get_filename_component(_wasm_piper_dir "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 get_filename_component(_ort_npm_dir "${_repo_root}/external/node_modules" ABSOLUTE)
 if(NOT EXISTS "${_ort_npm_dir}/onnxruntime-web")
+    get_filename_component(_npm_bin_dir "${NPM_BIN}" DIRECTORY ABSOLUTE)
     file(WRITE "${CMAKE_BINARY_DIR}/.install_ort.sh"
-"#!/bin/sh\nset -e\ncd \"${_wasm_piper_dir}\"\nnpm install\nmkdir -p \"${_ort_npm_dir}\"\ncp -a \"node_modules/.\" \"${_ort_npm_dir}/\"\nrm -rf node_modules\nln -sfn \"${_ort_npm_dir}\" node_modules\n")
+"#!/bin/sh\nset -e\ncd \"${_wasm_piper_dir}\"\nexport PATH=\"${_npm_bin_dir}:\$PATH\"\n\"${NPM_BIN}\" install\nmkdir -p \"${_ort_npm_dir}\"\ncp -a \"node_modules/.\" \"${_ort_npm_dir}/\"\nrm -rf node_modules\nln -sfn \"${_ort_npm_dir}\" node_modules\n")
     execute_process(
         COMMAND sh "${CMAKE_BINARY_DIR}/.install_ort.sh"
         RESULT_VARIABLE _npm_result
