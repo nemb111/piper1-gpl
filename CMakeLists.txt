@@ -13,14 +13,17 @@ find_package(Python COMPONENTS Development.Module Development.SABIModule REQUIRE
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/native/espeak_ng_external.cmake)
 configure_espeak_ng_external()
 
+# Install location for espeak-ng
+set(ESPEAKNG_BUILD_DIR ${CMAKE_BINARY_DIR}/espeak_ng)
 set(ESPEAKNG_INSTALL_DIR ${CMAKE_BINARY_DIR}/espeak_ng-install)
 
 if(WIN32)
+    # Special handling for Windows
     set(ESPEAKNG_STATIC_LIB ${ESPEAKNG_INSTALL_DIR}/lib/espeak-ng.lib)
-    set(UCD_STATIC_LIB ${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/src/ucd-tools/libucd.lib)
+    set(UCD_STATIC_LIB ${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build/src/ucd-tools/ucd.lib)
 else()
     set(ESPEAKNG_STATIC_LIB ${ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a)
-    set(UCD_STATIC_LIB ${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/src/ucd-tools/libucd.a)
+    set(UCD_STATIC_LIB ${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build/src/ucd-tools/libucd.a)
 endif()
 
 include_directories(
@@ -63,7 +66,7 @@ install(TARGETS espeakbridge
 )
 
 # Copy espeak-ng-data
-set(DATA_SRC ${ESPEAKNG_INSTALL_DIR}/share/espeak-ng-data)
+set(DATA_SRC ${CMAKE_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data)
 set(DATA_DST ${CMAKE_CURRENT_SOURCE_DIR}/src/piper/espeak-ng-data)
 
 add_custom_target(copy_espeak_ng_data ALL
