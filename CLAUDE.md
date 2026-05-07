@@ -23,7 +23,7 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 | CLI entry point | `src/piper/__main__.py` | `piper` command: file/stdin/argument input, WAV output or ffplay playback |
 | HTTP server | `src/piper/http_server.py` | Flask API: `/`, `/voices`, `/all-voices`, `/download` |
 | Voice downloads | `src/piper/download_voices.py` | Downloads `.onnx` + `.json` from HuggingFace piper-voices repo |
-| C API | `libpiper/` | C++ library with C bindings; see `libpiper/include/piper.h` |
+| C API | `libpiper/` | C++ library with C bindings; `libpiper/CMakeLists.txt` builds shared libpiper; see `libpiper/include/piper.h` |
 | CMake build | `CMakeLists.txt` | Builds espeak-ng as ExternalProject, compiles `espeakbridge.c` module |
 | Python setup | `setup.py` | scikit-build setup: CMake module, package data (espeak-ng-data, tashkeel) |
 | WASM | `wasm_piper/` | WebAssembly build of libpiper for browser use |
@@ -32,20 +32,19 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 
 - **Python + C extension**: `setup.py` uses scikit-build to call CMake. The CMake build compiles espeak-ng from source and links it into `espeakbridge.c` (Python stable ABI module).
 - **Development install**: `script/setup --dev` then `script/dev_build` (or `python3 setup.py build_ext --inplace`)
-- **CMake modules are split by platform**: `cmake/native/` (native: `espeak_ng_external.cmake`, `onnxruntime_external.cmake`, `options.cmake`), `cmake/emscripten/` (WASM: `espeak_ng_external.cmake`, `find_emscripten.cmake`, `options.cmake`). Options like `ONNXRUNTIME_VERSION` and `PIPER_ESPEAKNG_UPDATE_DISCONNECTED` default in `cmake/native/options.cmake`; `EMSCRIPTEN_VERSION` defaults in `cmake/emscripten/options.cmake` (auto-included by `find_emscripten.cmake`).
+- **CMake modules are split by platform**: `cmake/native/` (native: `espeak_ng_external.cmake`, `onnxruntime_external.cmake`, `options.cmake`), `cmake/emscripten/` (WASM: `espeak_ng_external.cmake`, `find_emscripten.cmake`, `find_npm.cmake`, `find_onnxruntime_web.cmake`, `options.cmake`, `toolchain.cmake`). Options like `ONNXRUNTIME_VERSION` and `PIPER_ESPEAKNG_UPDATE_DISCONNECTED` default in `cmake/native/options.cmake`; `EMSCRIPTEN_VERSION` defaults in `cmake/emscripten/options.cmake` (auto-included by `find_emscripten.cmake`).
 - **WASM build**: `cmake -B wasm_piper/build -S wasm_piper` (uses `find_emscripten.cmake` before `project()` for auto-download + compiler detection).
-- **WASM onnxruntime**: Real onnxruntime is x86_64 Linux only — not WASM. Compile `mock_onnxruntime.cpp` directly into the target and define a no-op `onnxruntime_iface_lib` before `configure_onnxruntime_external()` to skip download.
+- **WASM onnxruntime**: Real onnxruntime is x86_64 Linux only — not WASM. Use `ort_shim` (header-only shim replacing `onnxruntime_cxx_api.h`) which forwards ONNX C++ API to onnxruntime-web via EM_JS. For mock builds (tests only), `mock_onnxruntime.cpp` is in `wasm_piper/tests_old/`.
 - **ONNX Runtime Web (Node.js)**: Use `ort.env.wasm.numThreads = 1` to avoid thread affinity errors on headless servers. Import via `const ort = require('onnxruntime-web')`.
 - **ort_shim moved**: `onnxruntime_cxx_api.h`, `ort_shim.js` → `wasm_piper/shim/src/`. `ort_shim_external.cmake` also moved there. `ort_shim.cpp` deleted (stub with no actual definitions).
 - **ort_shim header-only**: Every definition in `onnxruntime_cxx_api.h` is header-only (EM_JS inline, template methods, inline class bodies). Nothing can move to a `.cpp`.
-- **WASM test target**: `piper_wasm_mock_integration_test` (mock ONNX, baseline compatibility), built via `cmake -B wasm_piper/build -S wasm_piper`.
-- **WASM build**: `cmake -B wasm_piper/build -S wasm_piper`. The `SHIM_SRC_DIR` variable must be set to `${CMAKE_CURRENT_SOURCE_DIR}/shim/src` before including `ort_shim_external.cmake`. INTERFACE include dirs don't always propagate — add `${SHIM_SRC_DIR}` directly to `target_include_directories(piper_wasm)` in the main CMakeLists.txt.
+- **WASM test target**: `piper_wasm_mock_integration_test` (mock ONNX, baseline compatibility) — defined in `wasm_piper/tests/CMakeLists.txt`. Mock ONNX files are in `wasm_piper/tests_old/`.
+- **ort_shim WASM build config**: `SHIM_SRC_DIR` must be set to `${CMAKE_CURRENT_SOURCE_DIR}/shim/src` before including `ort_shim_external.cmake` (in `wasm_piper/CMakeLists.txt`). INTERFACE include dirs don't always propagate — add `${SHIM_SRC_DIR}` directly to `target_include_directories(piper_wasm)` in the main CMakeLists.txt.
 - INTERFACE libraries can't be linked (`target_link_libraries` will try to find `-l<name>` and fail). Use INTERFACE only for include paths; link real libraries directly.
 - **WASM tests**: Run `node wasm_piper/tests/test_wasm_integration.js` (mock mode).
-- **ort_shim (WASM ONNX bridge)**: `wasm_piper/shim/src/onnxruntime_cxx_api.h` defines `Ort` namespace forwarding ONNX C++ API to `wasm_piper/shim/src/ort_shim.js` via EM_JS. Session init is async (done externally by JS via `ort_shim_init()`). Input tensors are queued via `ort_shim_set_input_data()` and inference is triggered from JS (`startNextInference()`). The shim replaces the real ONNX Runtime header via include path resolution.
-- **ort_shim test harness**: Synthesis from JS uses `wasm_piper/synthesize.js` — phonemize via `spawnSync` on espeak-ng CLI, run ONNX via `ort.InferenceSession`, write WAV.
+- **ort_shim (WASM ONNX bridge)**: `wasm_piper/shim/src/onnxruntime_cxx_api.h` defines `Ort` namespace forwarding ONNX C++ API to `wasm_piper/shim/src/ort_shim.js` via EM_JS. Session init is lazy (stored model path, init on first `Run()`). Input tensors queued via `ort_shim_set_input_data()`, inference triggered from `Session::Run()`. Audio copied from ort.js tensor to Emscripten heap (double-buffered). The shim replaces the real ONNX Runtime header via include path resolution.
 - **Test voice models**: `en_US-amy-low.onnx` (63MB) in `wasm_piper/tests/data/`. Downloaded from `rhasspy/piper-voices` HuggingFace repo.
-- **ONNX switch**: `piper_impl.hpp` uses `#ifdef MOCK_BUILD` to choose mock vs real ONNX Runtime. Real builds include `<onnxruntime_cxx_api.h>`.
+- **ONNX header**: `piper_impl.hpp` unconditionally includes `<onnxruntime_cxx_api.h>`. For WASM builds, the ort_shim version is picked up via include path precedence (it sits first in the compiler's include search). For mock builds, `MOCK_BUILD=1` is passed to the compiler, and `mock_onnxruntime.cpp` is compiled instead of the real ONNX code.
 - **ONNX input shapes**: `input` is `[1, N]` phoneme IDs, `input_lengths` is `[1]` (scalar count), `scales` is `[3]` (noise_scale, length_scale, noise_w). Multi-speaker models also need `sid` as `[1]` speaker ID.
 - **Wheels**: `python3 -m build` or `script/package`
 
@@ -55,7 +54,7 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - `@`-prefixed CMake variable expansion does NOT work for `PATCH_COMMAND` — use a shell script that no-ops on empty args.
 - `CMAKE_CURRENT_SOURCE_DIR` resolves inside the ExternalProject context, not the caller. Use `get_filename_component(_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)` to reach the repo root.
 - When including native cmake modules from subdirectories, use `${CMAKE_CURRENT_LIST_DIR}/../cmake/native/...` pattern (not `${_repo_root}/cmake/...`), matching how `libpiper/CMakeLists.txt` includes `espeak_ng_external.cmake` and `onnxruntime_external.cmake`.
-- `configure_espeak_ng_external()` requires mandatory toolchain vars (`PIPER_ESPEAKNG_UPDATE_DISCONNECTED`, `PIPER_ESPEAKNG_PATCH_SCRIPT`, `PIPER_ESPEAKNG_CMAKE_ARGS`). Set before calling; the function validates and errors if missing.
+- `configure_espeak_ng_external()` requires mandatory toolchain vars (`PIPER_ESPEAKNG_UPDATE_DISCONNECTED`, `PIPER_ESPEAKNG_CMAKE_ARGS`). Set before calling; the function validates and errors if missing. The old `PIPER_ESPEAKNG_PATCH_SCRIPT` var is gone.
 - `configure_onnxruntime_external()` checks `if(TARGET onnxruntime_iface_lib)` as a no-op guard — WASM callers predefine it; native callers let the function create it.
 - When including a CMake module from a subdirectory (e.g. `shim/src/ort_shim_external.cmake`), `CMAKE_CURRENT_SOURCE_DIR` inside the included file resolves to the _caller's_ source dir, not the module's directory. Use caller-set variables (e.g. `SHIM_SRC_DIR`) instead.
 - External library downloads go in `CMAKE_BINARY_DIR/external/` — never in the source tree. Deleting `build/` removes everything and reconfiguration re-downloads.
@@ -92,7 +91,7 @@ The test suite (`tests/`) includes:
 - `test_espeak_phonemizer.py` - espeak-ng phonemization
 - `test_tashkeel.py` - Arabic diacritization
 - `test_chinese_phonemizer.py` - g2pW Chinese phonemizer (excluded from default pytest run)
-- `libpiper/tests/` - C/C++ tests with mock espeak-ng and onnxruntime
+- `wasm_piper/tests/` - WASM integration tests (JS runner + C++ main). `wasm_piper/tests_old/` — stale mock ONNX/espeak-ng test files (mock_onnxruntime.cpp, mock_espeak_ng.cpp).
 
 ### Training
 
@@ -110,8 +109,13 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - **ONNX models** are the voice files. They accept `input` (phoneme IDs), `input_lengths`, `scales` (noise, length, noise_w), optional `sid` (speaker ID). Outputs: audio waveform (+ optionally alignment data).
 - **Multi-speaker voices**: `num_speakers > 1` in config, `sid` input required for inference.
 - **Phoneme types**: `espeak` (default), `text` (raw IPA), `pinyin` (Chinese g2pW).
-- **espeak-ng data injection (WASM)**: Pre-compiled data files from a native build are copied into the espeak-ng source tree via `cmake/patch_espeak_data.sh` (PATCH_COMMAND). Never try to run the espeak-ng WASM binary to generate data.
+- **espeak-ng data (WASM)**: Pre-compiled espeak-ng data files are loaded via WASM FS `--preload-file` in the CMake link flags (e.g., `--preload-file tests/data/espeak-ng-data@/`). The old `cmake/patch_espeak_data.sh` script is gone; espeak-ng data is now preloaded directly.
 - **ONNX CPU vs WASM audio**: When running the same ONNX model on CPU (onnxruntime) vs WASM (onnxruntime-web), floating-point divergence is significant — cosine similarity of raw waveforms was ~0.07 for identical inputs. Use perceptual metrics (openl3) for meaningful comparison, not sample-wise similarity.
 - **EM_ASYNC_JS crash in Emscripten 5.0.6**: EM_ASYNC_JS + ASYNCIFY crashes during stack restoration (Asyncify `doRewind`). Keep async logic in JS layer; C++ EM_JS must be synchronous.
 - **WASM piper_audio_chunk layout (32-bit)**: 10 fields at offsets [0,4,8,12,16,20,24,28,32,36] — samples ptr, num_samples, sample_rate, is_last, phonemes ptr, num_phonemes, phoneme_ids ptr, num_phoneme_ids, alignments ptr, num_alignments. Total: 40 bytes.
 - **piper_default_synthesize_options**: Returns struct by value — cannot use `ccall` for this. Must manually write option values to WASM heap (speaker_id as i32 at offset 0, length_scale/f32 at offset 4, noise_scale/f32 at offset 8, noise_w/f32 at offset 12).
+- **ort.js tensor vs Emscripten heap**: ort.js uses a separate WASM memory. Audio data must be copied to Emscripten heap via ort_shim (double-buffered with flip). `GetTensorData()` must return ort_shim's heap pointer, not the ort.js tensor pointer — `OrtRelease` on the ort.js tensor corrupts it.
+- **Extract before access**: `HEAPU8.buffer !== ort.js tensor.buffer` — direct typed array views across WASM memories fail. Must extract all values to a plain JS array first, then write to Emscripten heap via `ArrayBuffer` + `Uint8Array.set()`.
+- **EM_ASYNC_JS parameter limit**: 8th+ parameters silently drop. Use separate EM_JS getters (e.g. `ort_shim_get_audio_ptr`) for output values. State written inside EM_ASYNC_JS is accessible from EM_JS immediately after return.
+- **ort_shim internal orchestration**: Synthesis scripts (synthesize.js) must ONLY use the piper C API (`piper_create`, `piper_synthesize_start`, `piper_synthesize_next`, `piper_free`). All ONNX Runtime setup, input batching, inference triggering, and audio copying are internal to ort_shim.js. `ortShimModule` is never called directly from synthesis scripts.
+- **Value for heap pointers**: When returning audio from `Session::Run()`, set `Value.data_ = (void*)audioPtrC` (heap pointer from ort_shim). `Value::GetTensorData()` must check `ort_shim_get_audio_ptr()` and return the heap pointer.

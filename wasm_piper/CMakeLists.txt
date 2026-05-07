@@ -57,7 +57,7 @@ add_executable(piper_wasm
 )
 
 set_target_properties(piper_wasm PROPERTIES
-    LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -s EXPORT_NAME='piperWasm' -s EXPORTED_FUNCTIONS='[_malloc,_free,_piper_create,_piper_default_synthesize_options,_piper_synthesize_start,_piper_synthesize_next,_piper_free]' -s EXPORTED_RUNTIME_METHODS='[ccall,cwrap,stackAlloc,stackRestore,stackSave,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,HEAP8,HEAPU8,HEAPU16,HEAPU32,HEAPF32,HEAP64,FS]' -s ASYNCIFY=1 -s EXIT_RUNTIME=1 -s WASM_BIGINT=1 -s FILESYSTEM=1 -s INITIAL_MEMORY=2147483648 -s STACK_SIZE=67108864 -s DISABLE_EXCEPTION_CATCHING=0 -s ALLOW_TABLE_GROWTH=1 -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=1 --no-entry --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/tests/data@/"
+    LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=0 -s MODULARIZE=1 -s EXPORT_NAME='piperWasm' -s EXPORTED_FUNCTIONS='[_malloc,_free,_piper_create,_piper_default_synthesize_options,_piper_synthesize_start,_piper_synthesize_next,_piper_free]' -s EXPORTED_RUNTIME_METHODS='[ccall,cwrap,stackAlloc,stackRestore,stackSave,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,HEAP8,HEAPU8,HEAPU16,HEAPU32,HEAPF32,HEAP64,FS]' -s ASYNCIFY=1 -s EXIT_RUNTIME=1 -s WASM_BIGINT=1 -s FILESYSTEM=1 -s INITIAL_MEMORY=2147483648 -s STACK_SIZE=67108864 -s DISABLE_EXCEPTION_CATCHING=0 -s ALLOW_TABLE_GROWTH=1 -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=1 --no-entry --preload-file ${CMAKE_CURRENT_SOURCE_DIR}/tests/data@/"
     OUTPUT_NAME "piper_wasm"
     SUFFIX ".js"
 )
@@ -70,4 +70,15 @@ target_include_directories(piper_wasm PRIVATE
     ${SHIM_SRC_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${_repo_root}/libpiper/include
+)
+
+# ── Merge ort_shim.js into piper_wasm.js ──
+# 1. Strip ort_shim.js's module.exports (it would overwrite piperWasm).
+# 2. Prepend cleaned ort_shim.js to piper_wasm.js so ortShimModule is
+#    available as a global, but piperWasm remains the module.exports.
+add_custom_command(TARGET piper_wasm POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Merging ort_shim.js into piper_wasm.js..."
+    COMMAND sh -c "sed '/^if (typeof module/,$d' '${SHIM_SRC_DIR}/ort_shim.js' > '${CMAKE_CURRENT_BINARY_DIR}/ort_shim_stripped.js' && cat '${CMAKE_CURRENT_BINARY_DIR}/ort_shim_stripped.js' '${CMAKE_CURRENT_BINARY_DIR}/piper_wasm.js' > '${CMAKE_CURRENT_BINARY_DIR}/piper_wasm.js.merged' && mv '${CMAKE_CURRENT_BINARY_DIR}/piper_wasm.js.merged' '${CMAKE_CURRENT_BINARY_DIR}/piper_wasm.js'"
+    COMMENT "Merging ort_shim.js into piper_wasm.js"
+    VERBATIM
 )

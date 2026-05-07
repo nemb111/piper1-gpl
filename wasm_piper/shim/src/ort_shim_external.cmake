@@ -7,6 +7,10 @@
 # shim/src/ to the include path (so #include <onnxruntime_cxx_api.h>
 # resolves to the shim instead of the real header from piper_impl.hpp).
 #
+# Additionally, ort_shim.js is merged into piper_wasm.js via a post-link
+# step so that ortShimModule is globally available when EM_JS functions
+# (ort_shim_run, ort_shim_set_input_data, etc.) execute.
+#
 # Usage (in wasm_piper/CMakeLists.txt, before project()):
 #   set(SHIM_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shim/src)
 #   include(${SHIM_SRC_DIR}/ort_shim_external.cmake)

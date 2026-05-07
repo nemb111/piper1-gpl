@@ -77,6 +77,13 @@ await synthesize('tests/data/en_US-amy-low.onnx', 'tests/data/en_US-amy-low.onnx
 | Mode | ONNX | Use Case | Speed |
 |---|---|---|---|
 | **Mock** | `mock_onnxruntime.cpp` | Build pipeline verification, deterministic output | Fast (no actual inference) |
+| **Real** | `onnxruntime-web` | Production synthesis, audio quality verification | Slow (actual inference) |
+
+Mock test source files are in `wasm_piper/tests_old/`. The current test target (`piper_wasm_mock_integration_test` in `wasm_piper/tests/CMakeLists.txt`) uses `wasm_integration_main.cpp` with mock ONNX.
+
+## ort_shim Build Integration
+
+The compiled `piper_wasm.js` has `ort_shim.js` merged into it at build time (via a CMake post-build step). This means `ortShimModule` is globally available within the module scope, and `piperWasm` remains the correct `module.exports`. You never need to import ort_shim.js separately.
 
 ## Directory Layout
 
