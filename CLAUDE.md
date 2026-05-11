@@ -73,6 +73,10 @@ script/setup --dev
 # Build C extension
 script/dev_build
 
+# Setup divergence tests (deps + native binary + Vosk model)
+python3 tests/divergence_tests/setup.py all
+# Individual steps: deps | build-native | download-model
+
 # Run CLI
 python3 -m piper --model en_US-lessac-medium.onnx --output-file out.wav "Hello world"
 
@@ -84,13 +88,23 @@ pytest tests/
 
 # Synthesize audio (onnxruntime-web, WASM in Node)
 node wasm_piper/synthesize.js model.onnx model.onnx.json "text" output.wav
+
+# Divergence validation: run setup once, then compare Python vs native vs WASM output
+python3 tests/divergence_tests/setup.py all && pytest tests/divergence_tests/test_divergence.py -v
+# Quick subset: only Python vs native comparison
+pytest tests/divergence_tests/test_divergence.py -v -k "test_python_vs_native"
+# Negative test: verify metric can distinguish different text
+pytest tests/divergence_tests/test_divergence.py -v -k "test_different_texts_not_similar"
 ```
+
+**openl3 install caveat (Python 3.12):** openl3 0.4.2 uses the removed `imp` module. Before `pip install "piper-tts[divergence]"`, patch `import imp` → `import importlib.util` + `imp.load_source()` → `importlib.util` in `openl3/setup.py`. Install with `--no-deps` to avoid dependency conflicts.
 
 The test suite (`tests/`) includes:
 - `test_piper.py` - Core synthesis tests
 - `test_espeak_phonemizer.py` - espeak-ng phonemization
 - `test_tashkeel.py` - Arabic diacritization
 - `test_chinese_phonemizer.py` - g2pW Chinese phonemizer (excluded from default pytest run)
+- `test_divergence.py` - Cross-variant audio similarity (Python vs native vs WASM). Compares pairwise by transcribing back to text using Vosk speech recognition and computing SequenceMatcher word-list ratio. Simulates synthesis via native C++ binary (`tests/divergence_tests/build/native_divergence_test`) and WASM (`wasm_piper/synthesize.js`). Includes negative tests (`test_different_texts_not_similar`) to verify metric can distinguish dissimilar audio. Prerequisites: `python3 tests/divergence_tests/setup.py all` (installs deps, builds native binary, downloads Vosk model to `external/`).
 - `wasm_piper/tests/` - WASM integration tests (JS runner + C++ main). `wasm_piper/tests_old/` — stale mock ONNX/espeak-ng test files (mock_onnxruntime.cpp, mock_espeak_ng.cpp).
 
 ### Training
@@ -110,7 +124,8 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - **Multi-speaker voices**: `num_speakers > 1` in config, `sid` input required for inference.
 - **Phoneme types**: `espeak` (default), `text` (raw IPA), `pinyin` (Chinese g2pW).
 - **espeak-ng data (WASM)**: Pre-compiled espeak-ng data files are loaded via WASM FS `--preload-file` in the CMake link flags (e.g., `--preload-file tests/data/espeak-ng-data@/`). The old `cmake/patch_espeak_data.sh` script is gone; espeak-ng data is now preloaded directly.
-- **ONNX CPU vs WASM audio**: When running the same ONNX model on CPU (onnxruntime) vs WASM (onnxruntime-web), floating-point divergence is significant — cosine similarity of raw waveforms was ~0.07 for identical inputs. Use perceptual metrics (openl3) for meaningful comparison, not sample-wise similarity.
+- **ONNX CPU vs WASM audio**: When running the same ONNX model on CPU (onnxruntime) vs WASM (onnxruntime-web), floating-point divergence is significant. **For divergence tests, use log-mel spectrogram correlation + sigmoid** (`tests/test_divergence.py`): n_mels=24, sigmoid(k=10). Same-text ~0.93, different-text ~0.48. openl3 captures voice timbre not linguistic content — it gives ~0.99 similarity for any two clips from the same voice regardless of text. WASM divergence varies by quote (similarity 0.41-0.99); threshold ~0.80 catches significant divergence while being realistic.
+- **Audio comparison for short TTS clips (2-5s, same voice)**: openl3 fails (captures timbre, ~0.99 always). Log-mel correlation with fewer bands (n_mels=24) + sigmoid(k=10) is content-sensitive. More bands increase WASM divergence impact. Correlation > cosine because it's robust to amplitude differences between variants.
 - **EM_ASYNC_JS crash in Emscripten 5.0.6**: EM_ASYNC_JS + ASYNCIFY crashes during stack restoration (Asyncify `doRewind`). Keep async logic in JS layer; C++ EM_JS must be synchronous.
 - **WASM piper_audio_chunk layout (32-bit)**: 10 fields at offsets [0,4,8,12,16,20,24,28,32,36] — samples ptr, num_samples, sample_rate, is_last, phonemes ptr, num_phonemes, phoneme_ids ptr, num_phoneme_ids, alignments ptr, num_alignments. Total: 40 bytes.
 - **piper_default_synthesize_options**: Returns struct by value — cannot use `ccall` for this. Must manually write option values to WASM heap (speaker_id as i32 at offset 0, length_scale/f32 at offset 4, noise_scale/f32 at offset 8, noise_w/f32 at offset 12).
