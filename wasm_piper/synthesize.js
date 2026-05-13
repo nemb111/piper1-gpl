@@ -12,11 +12,11 @@
  *
  * Environment variables:
  *   ESPEAK_DATA   - Path to espeak-ng data directory within WASM FS
- *                   (default: /espeak-ng-data from preloaded tests/data)
+ *                   (default: /espeak-ng-data from preloaded external/)
  *   MODEL_PATH    - Override model path in WASM FS
- *                   (default: /test_voice.onnx from preloaded tests/data)
+ *                   (default: /piper_voices/test_voice.onnx from preloaded external/)
  *   CONFIG_PATH   - Override config path in WASM FS
- *                   (default: /test_voice.onnx.json from preloaded tests/data)
+ *                   (default: /piper_voices/test_voice.onnx.json from preloaded external/)
  */
 
 const { readFileSync, writeFileSync, mkdtempSync, rmSync } = require('fs');
@@ -30,9 +30,9 @@ const BASE_DIR = path.resolve(__DIR__);
 const WASM_JS = path.join(BASE_DIR, 'build', 'piper_wasm.js');
 const WASM_WASM = path.join(BASE_DIR, 'build', 'piper_wasm.wasm');
 
-// WASM FS paths (files preloaded via --preload-file tests/data@/)
-const DEFAULT_MODEL_WASM   = '/en_US-amy-low.onnx';
-const DEFAULT_CONFIG_WASM  = '/en_US-amy-low.onnx.json';
+// WASM FS paths (files preloaded via --preload-file external/espeak-ng-data@/ external/piper_voices@/)
+const DEFAULT_MODEL_WASM   = '/piper_voices/en_US-lessac-medium.onnx';
+const DEFAULT_CONFIG_WASM  = '/piper_voices/en_US-lessac-medium.onnx.json';
 const DEFAULT_ESPEAK       = '/espeak-ng-data';
 
 // Temp directory for host-accessible copies of preloaded WASM FS files.

@@ -62,7 +62,7 @@ endfunction()
 function(configure_espeak_ng_external)
     # Optional parameters for flexibility
     set(options "")
-    set(oneValueArgs TARGET_NAME UPDATE_DISCONNECTED EXTRA_CMAKE_ARGS_PREFIX PREFIX C_FLAGS CXX_FLAGS)
+    set(oneValueArgs TARGET_NAME UPDATE_DISCONNECTED EXTRA_CMAKE_ARGS_PREFIX PREFIX C_FLAGS CXX_FLAGS SRC_DIR)
     set(multiValueArgs EXTRA_CMAKE_ARGS DEPENDS)
     cmake_parse_arguments(ARG "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
@@ -84,6 +84,10 @@ function(configure_espeak_ng_external)
     endif()
     if(NOT ARG_CXX_FLAGS)
         set(ARG_CXX_FLAGS "-D_FILE_OFFSET_BITS=64 -I${ARG_PREFIX}/src/${ARG_TARGET_NAME}/src/ucd-tools/src/include")
+    endif()
+
+    if(NOT ARG_SRC_DIR)
+        set(ARG_SRC_DIR "")
     endif()
 
     # ── Mandatory variable check ─────────────────────────────
@@ -127,22 +131,42 @@ function(configure_espeak_ng_external)
     list(APPEND _CMAKE_ARGS ${ARG_EXTRA_CMAKE_ARGS_PREFIX})
     list(APPEND _CMAKE_ARGS ${ARG_EXTRA_CMAKE_ARGS})
 
-    ExternalProject_Add(${ARG_TARGET_NAME}
-        GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
-        GIT_TAG        83cb7ecf6f5f3e66014102b3d4a5823e60182055
-        PREFIX         ${_ESPEAKNG_BUILD_DIR}
+    if(ARG_SRC_DIR AND EXISTS "${ARG_SRC_DIR}")
+        # Use user-provided source directory instead of git clone
+        ExternalProject_Add(${ARG_TARGET_NAME}
+            SOURCE_DIR ${ARG_SRC_DIR}
+            PREFIX     ${_ESPEAKNG_BUILD_DIR}
 
-        CMAKE_ARGS
-            ${_CMAKE_ARGS}
+            CMAKE_ARGS
+                ${_CMAKE_ARGS}
 
-        BUILD_BYPRODUCTS
-            ${_ESPEAKNG_STATIC_LIB}
-            ${_UCD_STATIC_LIB}
+            BUILD_BYPRODUCTS
+                ${_ESPEAKNG_STATIC_LIB}
+                ${_UCD_STATIC_LIB}
 
-        UPDATE_DISCONNECTED ${ARG_UPDATE_DISCONNECTED}
+            UPDATE_DISCONNECTED ${ARG_UPDATE_DISCONNECTED}
 
-        DEPENDS ${ARG_DEPENDS}
-    )
+            DEPENDS ${ARG_DEPENDS}
+        )
+    else()
+        # Default: clone from git
+        ExternalProject_Add(${ARG_TARGET_NAME}
+            GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
+            GIT_TAG        83cb7ecf6f5f3e66014102b3d4a5823e60182055
+            PREFIX         ${_ESPEAKNG_BUILD_DIR}
+
+            CMAKE_ARGS
+                ${_CMAKE_ARGS}
+
+            BUILD_BYPRODUCTS
+                ${_ESPEAKNG_STATIC_LIB}
+                ${_UCD_STATIC_LIB}
+
+            UPDATE_DISCONNECTED ${ARG_UPDATE_DISCONNECTED}
+
+            DEPENDS ${ARG_DEPENDS}
+        )
+    endif()
 
     create_espeak_ng_targets(${ARG_TARGET_NAME} ${_ESPEAKNG_BUILD_SRC} ${_ESPEAKNG_INSTALL_DIR} ${_ESPEAKNG_STATIC_LIB} ${_UCD_STATIC_LIB})
 endfunction()

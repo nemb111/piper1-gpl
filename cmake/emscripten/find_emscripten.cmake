@@ -1,6 +1,27 @@
 include(${CMAKE_CURRENT_LIST_DIR}/options.cmake)
 
 get_filename_component(_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../" ABSOLUTE)
+
+# ── User-provided EMSDK_PATH ──
+if(EMSDK_PATH)
+    if(EXISTS "${EMSDK_PATH}/emsdk.py")
+        set(EMCC_PATH  "${EMSDK_PATH}/upstream/emscripten/emcc"    CACHE FILEPATH "")
+        set(EMXX_PATH  "${EMSDK_PATH}/upstream/emscripten/em++"    CACHE FILEPATH "")
+        set(EMSDK_ROOT "${EMSDK_PATH}"                             CACHE PATH "")
+        set(CMAKE_C_COMPILER   "${EMCC_PATH}" CACHE FILEPATH "")
+        set(CMAKE_CXX_COMPILER "${EMXX_PATH}" CACHE FILEPATH "")
+        set(CMAKE_ASM_COMPILER "${EMCC_PATH}" CACHE FILEPATH "")
+        message(STATUS "Emscripten ready (user-provided): ${EMCC_PATH} (${EMSCRIPTEN_VERSION})")
+        return()
+    else()
+        message(WARNING "EMSDK_PATH is set but does not contain emsdk.py: ${EMSDK_PATH}\n"
+                        "Run build.py first to download tools, or set EMSDK_PATH to a valid emsdk directory.\n"
+                        "Note: For automated setup, run: python3 build.py")
+        set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+        return()
+    endif()
+endif()
+
 set(_EMSDK_DIR     "${_PROJECT_ROOT}/external/emsdk-${EMSCRIPTEN_VERSION}")
 set(_EMSDK_ARCHIVE "${_EMSDK_DIR}/emsdk.tar.gz")
 set(_EMSDK_SRC     "${_EMSDK_DIR}/emsdk")
@@ -51,7 +72,11 @@ if(NOT EXISTS "${_EMSDK_ARCHIVE}")
     list(GET _status 0 _code)
     if(NOT _code EQUAL 0)
         list(GET _status 1 _msg)
-        message(FATAL_ERROR "Download failed: ${_msg}")
+        message(WARNING "Failed to download emsdk ${EMSCRIPTEN_VERSION}: ${_msg}\n"
+                        "Run build.py first to download tools, or set EMSDK_PATH.\n"
+                        "Note: For automated setup, run: python3 build.py")
+        set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+        return()
     endif()
 endif()
 
@@ -71,7 +96,11 @@ execute_process(
     RESULT_VARIABLE _rc
 )
 if(NOT _rc EQUAL 0)
-    message(FATAL_ERROR "Install failed")
+    message(WARNING "Failed to install Emscripten ${EMSCRIPTEN_VERSION}\n"
+                    "Run build.py first to download tools, or set EMSDK_PATH.\n"
+                    "Note: For automated setup, run: python3 build.py")
+    set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+    return()
 endif()
 
 execute_process(
@@ -79,6 +108,15 @@ execute_process(
         python3 "${_EMSDK_SRC}/emsdk.py" activate "${EMSCRIPTEN_VERSION}"
     WORKING_DIRECTORY "${_EMSDK_DIR}"
 )
+
+# Verify emcc was actually created after activation
+if(NOT EXISTS "${_EMCC}")
+    message(WARNING "Emscripten activation did not produce emcc at ${_EMCC}\n"
+                    "Run build.py first to download tools, or set EMSDK_PATH.\n"
+                    "Note: For automated setup, run: python3 build.py")
+    set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+    return()
+endif()
 
 set(EMSDK_ROOT "${_EMSDK_DIR}" CACHE PATH "")
 set(EMCC_PATH  "${_EMCC}" CACHE FILEPATH "")

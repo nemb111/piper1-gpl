@@ -10,7 +10,7 @@
  *
  * Session initialization is lazy -- happens on first Run() call.
  * The Emscripten Module is registered via setModule() called from
- * the merged piper_wasm.js (ort_shim_set_module EM_JS).
+ * ort_shim_set_module EM_JS.
  */
 var ortShimModule = (function() {
     /* -- Lazy-loaded onnxruntime-web -- */
@@ -276,9 +276,5 @@ var ortShimModule = (function() {
     return api;
 })();
 
-/* Always available on globalThis for EM_JS stubs and merged-file consumers */
+/* Always available on globalThis for EM_JS stubs */
 globalThis.ortShimModule = ortShimModule;
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = ortShimModule;
-}

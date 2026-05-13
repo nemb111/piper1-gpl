@@ -11,13 +11,16 @@
 include(${CMAKE_CURRENT_LIST_DIR}/../native/espeak_ng_external.cmake)
 find_package(Patch QUIET)
 
-if(NOT EMCC_PATH)
-    message(FATAL_ERROR
-        "emcc not found. Set EMSDK_ROOT or ensure emscripten is on PATH. "
-        "Run cmake --build to trigger emscripten download.")
-endif()
-
 function(configure_espeak_ng_emscripten)
+    if(NOT EMCC_PATH)
+        message(WARNING "emcc not found. Emscripten cross-compile will not be available.\n"
+                        "Run build.py first to download tools, or set EMSDK_PATH.\n"
+                        "Note: For automated setup, run: python3 build.py")
+        set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+        if(NOT DEFINED ESPEAKNG_SRC_PATH OR NOT ESPEAKNG_SRC_PATH)
+            return()
+        endif()
+    endif()
 
     configure_espeak_ng_external()
 
@@ -58,6 +61,7 @@ function(configure_espeak_ng_emscripten)
         CXX_FLAGS ""
         EXTRA_CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${EM_CMAKE_FILE} -DNativeBuild_DIR=${_NATIVE_BUILD_SRC}/build/src
         DEPENDS espeak_ng_external
+        SRC_DIR ${ESPEAKNG_SRC_PATH}
     )
 
     # ── After cross-configure, set up imported targets with cross-compiled paths ──

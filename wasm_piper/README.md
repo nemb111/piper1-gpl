@@ -37,7 +37,7 @@ This produces `wasm_piper/build/piper_wasm.{js,wasm,data}`.
 **Step 2 — Synthesize:**
 ```sh
 cd wasm_piper
-node synthesize.js tests/data/en_US-amy-low.onnx tests/data/en_US-amy-low.onnx.json "Hello from the WASM build" /tmp/output.wav
+node synthesize.js ../external/en_US-amy-low.onnx ../external/en_US-amy-low.onnx.json "Hello from the WASM build" /tmp/output.wav
 ```
 
 ## Synthesizing Audio
@@ -50,8 +50,8 @@ cd wasm_piper
 # CMake auto-installs onnxruntime-web into external/node_modules/ on first build.
 # Synthesize "The quick brown fox jumps over the lazy dog"
 node synthesize.js \
-  tests/data/en_US-amy-low.onnx \
-  tests/data/en_US-amy-low.onnx.json \
+  ../external/en_US-amy-low.onnx \
+  ../external/en_US-amy-low.onnx.json \
   "The quick brown fox jumps over the lazy dog" \
   output_fox.wav
 ```
@@ -69,7 +69,7 @@ The script also exports a `synthesize()` function for programmatic use:
 
 ```js
 const { synthesize } = require('./synthesize');
-await synthesize('tests/data/en_US-amy-low.onnx', 'tests/data/en_US-amy-low.onnx.json', 'hello world', 'output.wav');
+await synthesize('../external/en_US-amy-low.onnx', '../external/en_US-amy-low.onnx.json', 'hello world', 'output.wav');
 ```
 
 ## Understanding Test Modes
@@ -102,10 +102,9 @@ wasm_piper/
     test_wasm_c_api.js        # WASM C API boundary test (symbol exports, struct layout)
     test_wasm_integration.js  # JS test runner (mock ONNX mode)
     wasm_integration_main.cpp # C++ entry point (native + WASM)
-    data/
-      test_voice.onnx         # Mock voice model (empty file, mock ONNX)
-      test_voice.onnx.json    # Mock config (all phonemes mapped)
-      en_US-amy-low.onnx     # Real voice model (63 MB)
-      en_US-amy-low.onnx.json # Real voice config
-      espeak-ng-data/         # Pre-built espeak data files
+  external/
+    piper_voices/             # Symlinks to voice models for WASM preload
+    espeak-ng-data/           # Pre-built espeak data files for WASM preload
+    en_US-amy-low.onnx        # Real voice model (63 MB, host access)
+    en_US-amy-low.onnx.json   # Real voice config
 ```

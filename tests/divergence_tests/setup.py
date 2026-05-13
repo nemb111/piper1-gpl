@@ -2,13 +2,17 @@
 """Setup script for Piper divergence tests.
 
 Installs Python dependencies, builds the native C++ test binary via CMake,
-and downloads the Vosk speech recognition model.
+downloads voice models and the Vosk speech recognition model, copies
+espeak-ng data for WASM, and builds WASM if Emscripten is available.
 
 Usage:
     python setup.py                      # run all steps (skip if already set up)
     python setup.py deps                 # install Python dependencies only
     python setup.py build-native         # build native binary only
     python setup.py download-model       # download Vosk model only
+    python setup.py download-voices      # download voice models only
+    python setup.py espeak-data          # copy espeak-ng data for WASM
+    python setup.py build-wasm           # build WASM binary (if emcc available)
     python setup.py clean               # remove build artifacts
 """
 
@@ -33,6 +37,20 @@ _MODEL_ZIP = EXTERNAL_DIR / "vosk-model-en-us-0.22.zip"
 
 _NATIVE_BUILD = _DIR / "build"
 _NATIVE_BIN = _NATIVE_BUILD / "native_divergence_test"
+
+# Voice model for divergence tests
+_VOICE_MODEL = "en_US-lessac-medium"
+_VOICE_ONNX = EXTERNAL_DIR / f"{_VOICE_MODEL}.onnx"
+_VOICE_JSON = EXTERNAL_DIR / f"{_VOICE_MODEL}.onnx.json"
+_WASM_MODEL_DIR = _REPO / "wasm_piper" / "tests" / "data"
+_WASM_MODEL_ONNX = _WASM_MODEL_DIR / f"{_VOICE_MODEL}.onnx"
+_WASM_MODEL_JSON = _WASM_MODEL_DIR / f"{_VOICE_MODEL}.onnx.json"
+_ESPEAK_SRC = _REPO / "src" / "piper" / "espeak-ng-data"
+_ESPEAK_WASM = _WASM_MODEL_DIR / "espeak-ng-data"
+
+# WASM build artifacts
+_WASM_JS = _REPO / "wasm_piper" / "build" / "piper_wasm.js"
+_WASM_WASM = _REPO / "wasm_piper" / "build" / "piper_wasm.wasm"
 
 PIP_CMD = [sys.executable, "-m", "pip"]
 
@@ -87,9 +105,25 @@ def all_deps_met() -> bool:
     return True
 
 
+def _is_emcc_available() -> bool:
+    """Check if emcc (Emscripten compiler) is available on PATH."""
+    return shutil.which("emcc") is not None
+
+
+def voice_models_exist() -> bool:
+    """Check that voice model files and WASM symlinks exist."""
+    return _VOICE_ONNX.exists() and _VOICE_JSON.exists() and _WASM_MODEL_ONNX.exists() and _WASM_MODEL_JSON.exists()
+
+
+def espeak_data_exists() -> bool:
+    """Check that espeak-ng-data is available for WASM builds."""
+    return _ESPEAK_WASM.exists() and (_ESPEAK_WASM / "phontab").exists()
+
+
 def deps_exist() -> bool:
     """Check if all prerequisites are already set up."""
-    return all_deps_met() and _NATIVE_BIN.exists() and VOSK_EXTERNAL_DIR.exists()
+    return (all_deps_met() and _NATIVE_BIN.exists() and VOSK_EXTERNAL_DIR.exists()
+            and voice_models_exist() and espeak_data_exists())
 
 
 def install_deps():
@@ -204,6 +238,119 @@ def download_model():
     print(f"Model available at: {VOSK_EXTERNAL_DIR}")
 
 
+def download_voices():
+    """Download voice models needed for divergence tests."""
+    print("=== Downloading voice models ===")
+    if voice_models_exist():
+        print(f"Voice models already exist at {EXTERNAL_DIR}, skipping download.")
+        return
+
+    EXTERNAL_DIR.mkdir(parents=True, exist_ok=True)
+    _WASM_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
+    # HuggingFace path: en/en_US/lessac/medium/en_US-lessac-medium.onnx
+    # Extract: "en_US-lessac-medium" -> language="en_US", voice="lessac", level="medium"
+    parts = _VOICE_MODEL.split("-")
+    language = parts[0]  # "en_US"
+    level = parts[-1]     # "medium"
+    voice = "-".join(parts[1:-1])  # "lessac"
+    onnx_url = (
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+        f"en/{language}/{voice}/{level}/{_VOICE_MODEL}.onnx?download=true"
+    )
+    json_url = (
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
+        f"en/{language}/{voice}/{level}/{_VOICE_MODEL}.onnx.json?download=true"
+    )
+
+    onnx_path = EXTERNAL_DIR / f"{_VOICE_MODEL}.onnx"
+    json_path = EXTERNAL_DIR / f"{_VOICE_MODEL}.onnx.json"
+
+    for url, path in [(onnx_url, onnx_path), (json_url, json_path)]:
+        if not path.exists() or path.stat().st_size == 0:
+            print(f"  DL {path.name}...")
+            urllib.request.urlretrieve(url, str(path))
+            print(f"  OK  {path.name} ({path.stat().st_size / 1_000_000:.1f}MB)")
+        else:
+            print(f"  SKIP {path.name} (already exists)")
+
+    # Create symlinks in wasm_piper/tests/data/
+    if not _WASM_MODEL_ONNX.exists():
+        _WASM_MODEL_ONNX.symlink_to(
+            Path("../../../external") / f"{_VOICE_MODEL}.onnx"
+        )
+        print(f"  LINK  {_WASM_MODEL_ONNX.name} -> ../../../external/{_VOICE_MODEL}.onnx")
+    if not _WASM_MODEL_JSON.exists():
+        _WASM_MODEL_JSON.symlink_to(
+            Path("../../../external") / f"{_VOICE_MODEL}.onnx.json"
+        )
+        print(f"  LINK  {_WASM_MODEL_JSON.name} -> ../../../external/{_VOICE_MODEL}.onnx.json")
+
+    print(f"Voice models available at: {EXTERNAL_DIR}")
+
+
+def copy_espeak_data():
+    """Copy espeak-ng data to WASM test data directory."""
+    print("=== Setting up espeak-ng data for WASM ===")
+    if espeak_data_exists():
+        print(f"espeak-ng-data already exists at {_ESPEAK_WASM}, skipping.")
+        return
+
+    if not _ESPEAK_SRC.exists():
+        print(f"WARNING: source espeak-ng-data not found at {_ESPEAK_SRC}, skipping.")
+        return
+
+    _WASM_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(_ESPEAK_SRC, _ESPEAK_WASM, dirs_exist_ok=True)
+    print(f"Copied espeak-ng-data to {_ESPEAK_WASM}")
+
+
+def build_wasm():
+    """Build WASM piper binary if Emscripten is available."""
+    print("=== Building WASM piper binary ===")
+
+    if _WASM_JS.exists() and _WASM_WASM.exists():
+        print(f"WASM build already exists, skipping.")
+        return
+
+    if not _is_emcc_available():
+        print("Emscripten (emcc) not found on PATH. Skipping WASM build.")
+        print("Run: python3 build.py  (in root repo) to install Emscripten.")
+        return
+
+    # Ensure CMake build dir exists and is configured
+    build_dir = _REPO / "wasm_piper" / "build"
+    if not (build_dir / "CMakeCache.txt").exists():
+        print("Configuring CMake for WASM build...")
+        result = subprocess.run(
+            ["cmake", "-B", str(build_dir), "-S", str(_REPO / "wasm_piper")],
+            capture_output=True, text=True,
+            cwd=str(_REPO),
+        )
+        if result.returncode != 0:
+            print("CMake configure stderr:", file=sys.stderr)
+            print(result.stderr, file=sys.stderr)
+            print("WASM build failed. Install Emscripten first, then try again.")
+            return
+
+    print("Building WASM...")
+    result = subprocess.run(
+        ["cmake", "--build", str(build_dir), "-j"],
+        capture_output=True, text=True,
+        cwd=str(_REPO),
+    )
+    if result.returncode != 0:
+        print("CMake build stderr:", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        print("WASM build failed.")
+        return
+
+    if _WASM_JS.exists() and _WASM_WASM.exists():
+        print(f"WASM build complete: {_WASM_JS}, {_WASM_WASM}")
+    else:
+        print("Warning: build reported success but artifacts not found.", file=sys.stderr)
+
+
 def clean():
     """Remove build artifacts."""
     print("=== Cleaning build artifacts ===")
@@ -211,6 +358,14 @@ def clean():
         if d.exists():
             print(f"Removing {d}")
             shutil.rmtree(d)
+    # Clean WASM test data (not the external dir)
+    for f in [_WASM_MODEL_ONNX, _WASM_MODEL_JSON, _ESPEAK_WASM]:
+        if f.exists():
+            if f.is_symlink():
+                f.unlink()
+            elif f.is_dir():
+                shutil.rmtree(f)
+            print(f"Removing {f}")
     print("Clean complete.")
 
 
@@ -222,21 +377,27 @@ def main():
         "command",
         nargs="?",
         default="all",
-        choices=["all", "deps", "build-native", "download-model", "clean"],
+        choices=[
+            "all", "deps", "build-native", "download-model",
+            "download-voices", "espeak-data", "build-wasm", "clean",
+        ],
         help="Which step to run (default: all)",
     )
     args = parser.parse_args()
 
     # When running all steps, exit early if everything is already set up
     if args.command == "all" and deps_exist():
-        print("All dependencies, native binary, and Vosk model are already set up.")
+        print("All dependencies, native binary, and models are already set up.")
         return
 
     step_map = {
-        "all": ["deps", "build-native", "download-model"],
+        "all": ["deps", "build-native", "download-voices", "espeak-data", "download-model", "build-wasm"],
         "deps": ["deps"],
         "build-native": ["build-native"],
         "download-model": ["download-model"],
+        "download-voices": ["download-voices"],
+        "espeak-data": ["espeak-data"],
+        "build-wasm": ["build-wasm"],
         "clean": ["clean"],
     }
 
@@ -247,6 +408,12 @@ def main():
             build_native()
         elif step == "download-model":
             download_model()
+        elif step == "download-voices":
+            download_voices()
+        elif step == "espeak-data":
+            copy_espeak_data()
+        elif step == "build-wasm":
+            build_wasm()
         elif step == "clean":
             clean()
 

@@ -97,6 +97,8 @@ pytest tests/divergence_tests/test_divergence.py -v -k "test_python_vs_native"
 pytest tests/divergence_tests/test_divergence.py -v -k "test_different_texts_not_similar"
 ```
 
+**Acceptance criteria for WASM code changes:** Always run `python3 tests/divergence_tests/setup.py all` before running divergence tests — WASM builds (ort_shim, CMakeLists.txt, shim/src/) require the full divergence suite (Python vs native vs WASM) to validate correctness.
+
 **openl3 install caveat (Python 3.12):** openl3 0.4.2 uses the removed `imp` module. Before `pip install "piper-tts[divergence]"`, patch `import imp` → `import importlib.util` + `imp.load_source()` → `importlib.util` in `openl3/setup.py`. Install with `--no-deps` to avoid dependency conflicts.
 
 The test suite (`tests/`) includes:

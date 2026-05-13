@@ -14,7 +14,7 @@ endif()
 
 # ── Default version (LTS) ──
 if(NOT DEFINED NODE_VERSION)
-    set(NODE_VERSION "22.16.0" CACHE STRING "Node.js version to download")
+    set(NODE_VERSION "22.16.0" CACHE STRING "Node.js / npm version to download")
 endif()
 
 # ── Directory layout ──
@@ -39,7 +39,9 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin" AND _host_arch MATCHES "x86_64|a
 elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
     set(_node_platform "win-x64")
 else()
-    message(WARNING "Unsupported platform ${CMAKE_HOST_SYSTEM_NAME} ${_host_arch} for node download — using system node/npm")
+    message(WARNING "Unsupported platform ${CMAKE_HOST_SYSTEM_NAME} ${_host_arch} for node download — falling back to system node/npm.\n"
+                    "If system node/npm is also unavailable, run build.py first.\n"
+                    "Note: For automated setup, run: python3 build.py")
     set(_node_platform "")
 endif()
 
@@ -69,7 +71,11 @@ function(_node_download_and_extract node_dir tarball_path url hashes)
         if(NOT status_code EQUAL 0)
             list(GET download_status 1 error_msg)
             file(REMOVE "${tarball_path}.tmp")
-            message(FATAL_ERROR "Failed to download Node.js: ${error_msg}")
+            message(WARNING "Failed to download Node.js: ${error_msg}\n"
+                            "Run build.py first to download tools, or set NPM_DIR.\n"
+                            "Note: For automated setup, run: python3 build.py")
+            set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+            return()
         endif()
         file(RENAME "${tarball_path}.tmp" "${tarball_path}")
     else()
@@ -83,12 +89,32 @@ function(_node_download_and_extract node_dir tarball_path url hashes)
         RESULT_VARIABLE extract_result
     )
     if(NOT extract_result EQUAL 0)
-        message(FATAL_ERROR "Failed to extract Node.js tarball")
+        message(WARNING "Failed to extract Node.js tarball\n"
+                        "Run build.py first to download tools, or set NPM_DIR.\n"
+                        "Note: For automated setup, run: python3 build.py")
+        set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+        return()
     endif()
 endfunction()
 
 # ── Main function: ensure node/npm is available ──
 function(CONFIGURE_NPM_EXTERNAL)
+    # ── User-provided NPM_DIR ──
+    if(NPM_DIR)
+        if(EXISTS "${NPM_DIR}/npm")
+            set(NPM_BIN "${NPM_DIR}/npm" CACHE FILEPATH "Path to npm binary" FORCE)
+            set(NODE_BIN "${NPM_DIR}/node" CACHE FILEPATH "Path to node binary" FORCE)
+            message(STATUS "Node.js/npm ready (user-provided): ${NODE_BIN} / ${NPM_BIN}")
+            return()
+        else()
+            message(WARNING "NPM_DIR is set but does not contain npm: ${NPM_DIR}\n"
+                            "Run build.py first to download tools, or set NPM_DIR to a valid node/bin directory.\n"
+                            "Note: For automated setup, run: python3 build.py")
+            set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+            return()
+        endif()
+    endif()
+
     set(_bin_dir "${NODE_DOWNLOAD_DIR}/bin" CACHE PATH "Node.js binary directory")
     set(NPM_BIN "${_bin_dir}/npm" CACHE FILEPATH "Path to npm binary" FORCE)
     set(NODE_BIN "${_bin_dir}/node" CACHE FILEPATH "Path to node binary" FORCE)
@@ -103,7 +129,11 @@ function(CONFIGURE_NPM_EXTERNAL)
         find_program(NPM_BIN npm)
         find_program(NODE_BIN node)
         if(NOT NPM_BIN OR NOT NODE_BIN)
-            message(FATAL_ERROR "Node/npm not found on system PATH. Install Node.js 18+ or set NODE_VERSION to a supported platform.")
+            message(WARNING "Node/npm not found on system PATH and could not be downloaded.\n"
+                            "Run build.py first to download tools.\n"
+                            "Note: For automated setup, run: python3 build.py")
+            set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+            return()
         endif()
         message(STATUS "Using system Node.js/npm: ${NODE_BIN} / ${NPM_BIN}")
         return()
@@ -115,7 +145,11 @@ function(CONFIGURE_NPM_EXTERNAL)
     _node_download_and_extract("${NODE_DOWNLOAD_DIR}" "${_tarball_path}" "${_node_url}" "${_node_hashes}")
 
     if(NOT EXISTS "${NODE_BIN}")
-        message(FATAL_ERROR "Node.js binary not found at ${NODE_BIN} after extraction")
+        message(WARNING "Node.js binary not found at ${NODE_BIN} after extraction.\n"
+                        "Run build.py first to download tools, or set NPM_DIR.\n"
+                        "Note: For automated setup, run: python3 build.py")
+        set(PIPER_WASM_DEPS_MISSING ON CACHE BOOL "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up.")
+        return()
     endif()
 
     message(STATUS "Node.js ${NODE_VERSION} installed to ${NODE_DOWNLOAD_DIR}")
