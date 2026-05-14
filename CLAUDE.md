@@ -43,7 +43,7 @@ Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home
 - INTERFACE libraries can't be linked (`target_link_libraries` will try to find `-l<name>` and fail). Use INTERFACE only for include paths; link real libraries directly.
 - **WASM tests**: Run `node wasm_piper/tests/test_wasm_integration.js` (mock mode).
 - **ort_shim (WASM ONNX bridge)**: `wasm_piper/shim/src/onnxruntime_cxx_api.h` defines `Ort` namespace forwarding ONNX C++ API to `wasm_piper/shim/src/ort_shim.js` via EM_JS. Session init is lazy (stored model path, init on first `Run()`). Input tensors queued via `ort_shim_set_input_data()`, inference triggered from `Session::Run()`. Audio copied from ort.js tensor to Emscripten heap (double-buffered). The shim replaces the real ONNX Runtime header via include path resolution.
-- **Test voice models**: `en_US-amy-low.onnx` (63MB) in `wasm_piper/tests/data/`. Downloaded from `rhasspy/piper-voices` HuggingFace repo.
+- **Test voice models**: `en_US-amy-low.onnx` (63MB) in `external/piper_voices/`. Downloaded by `python3 tests/divergence_tests/setup.py download-voices --voice en_US-amy-low` from `rhasspy/piper-voices` HuggingFace repo. WASM preload maps `external/piper_voices/` → `/piper_voices/` in WASM FS.
 - **ONNX header**: `piper_impl.hpp` unconditionally includes `<onnxruntime_cxx_api.h>`. For WASM builds, the ort_shim version is picked up via include path precedence (it sits first in the compiler's include search). For mock builds, `MOCK_BUILD=1` is passed to the compiler, and `mock_onnxruntime.cpp` is compiled instead of the real ONNX code.
 - **ONNX input shapes**: `input` is `[1, N]` phoneme IDs, `input_lengths` is `[1]` (scalar count), `scales` is `[3]` (noise_scale, length_scale, noise_w). Multi-speaker models also need `sid` as `[1]` speaker ID.
 - **Wheels**: `python3 -m build` or `script/package`
@@ -75,7 +75,12 @@ script/dev_build
 
 # Setup divergence tests (deps + native binary + Vosk model)
 python3 tests/divergence_tests/setup.py all
-# Individual steps: deps | build-native | download-model
+# Individual steps: deps | build-native | download-model | download-voices | espeak-data | deterministic-config | build-wasm
+# Select voice: python3 tests/divergence_tests/setup.py --voice en_US-amy-low all
+# List voices:  python3 tests/divergence_tests/setup.py --list-voices
+
+# Divergence tests use voices from external/piper_voices/ (no symlinks).
+# Generated configs (deterministic onnx.json files): tests/divergence_tests/generated/ (auto-generated, do not commit)
 
 # Run CLI
 python3 -m piper --model en_US-lessac-medium.onnx --output-file out.wav "Hello world"
@@ -106,7 +111,7 @@ The test suite (`tests/`) includes:
 - `test_espeak_phonemizer.py` - espeak-ng phonemization
 - `test_tashkeel.py` - Arabic diacritization
 - `test_chinese_phonemizer.py` - g2pW Chinese phonemizer (excluded from default pytest run)
-- `test_divergence.py` - Cross-variant audio similarity (Python vs native vs WASM). Compares pairwise by transcribing back to text using Vosk speech recognition and computing SequenceMatcher word-list ratio. Simulates synthesis via native C++ binary (`tests/divergence_tests/build/native_divergence_test`) and WASM (`wasm_piper/synthesize.js`). Includes negative tests (`test_different_texts_not_similar`) to verify metric can distinguish dissimilar audio. Prerequisites: `python3 tests/divergence_tests/setup.py all` (installs deps, builds native binary, downloads Vosk model to `external/`).
+- `test_divergence.py` - Cross-variant audio similarity (Python vs native vs WASM). Compares pairwise by transcribing back to text using Vosk speech recognition and computing SequenceMatcher word-list ratio. Simulates synthesis via native C++ binary (`tests/divergence_tests/build/native_divergence_test`) and WASM (`wasm_piper/synthesize.js`). Includes negative tests (`test_different_texts_not_similar`) to verify metric can distinguish dissimilar audio. **63 tests total**: 20 quotes × 3 pairwise comparisons + 3 negative tests. Prerequisites: `python3 tests/divergence_tests/setup.py all` (installs deps, builds native binary, downloads voice models from `external/piper_voices/`, deterministic config, Vosk model). Deterministic config files live in `tests/divergence_tests/generated/` (not `data/`). When modifying the config copy in `setup.py`, use `ensure_ascii=True` in `json.dump` to preserve `\uXXXX` escape sequences matching the source voice model's encoding.
 - `wasm_piper/tests/` - WASM integration tests (JS runner + C++ main). `wasm_piper/tests_old/` — stale mock ONNX/espeak-ng test files (mock_onnxruntime.cpp, mock_espeak_ng.cpp).
 
 ### Training

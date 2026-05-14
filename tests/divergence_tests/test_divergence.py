@@ -31,26 +31,37 @@ import soundfile as sf
 import vosk
 
 from piper import PiperVoice, SynthesisConfig  # noqa: E402
+from config import (
+    DIR as _DIR,
+    ESPEAK_DATA as _ESPEAK_DATA,
+    NATIVE_BIN as _NATIVE_BIN,
+    REPO,
+    VOSK_EXTERNAL_DIR,
+    WAV_DIR as _WAV_DIR,
+    WASM_JS as _WASM_JS,
+    WASM_WASM as _WASM_WASM,
+    WASM_SYNTHESIZE as _WASM_SYNTHESIZE,
+    get_voice_model,
+    refresh,
+    _voice_paths,
+)
 
-_DIR = Path(__file__).resolve().parent
-_REPO = _DIR.parent.parent  # repo root = tests/divergence_tests/.. = tests/.. = repo root
-_WAV_DIR = _REPO / "external" / "divergence_wav"
-_PIPER_VOICES_DIR = _REPO / "external" / "piper_voices"
-_DEFAULT_VOICE = "en_US-lessac-medium"
 
 def _ensure_wav_dir():
     """Create divergence_wav/{python,native,wasm} dirs if they don't exist."""
     _WAV_DIR.mkdir(parents=True, exist_ok=True)
     for v in ("python", "native", "wasm"):
         (_WAV_DIR / v).mkdir(exist_ok=True)
-_MODEL_PATH = _PIPER_VOICES_DIR / f"{_DEFAULT_VOICE}.onnx"
-_CONFIG_PATH = _MODEL_PATH.with_suffix(".onnx.json")
-_DETERMINISTIC_CONFIG = _DIR / "data" / f"{_DEFAULT_VOICE}-deterministic.onnx.json"
-_ESPEAK_DATA = str(_REPO / "src" / "piper" / "espeak-ng-data")
-_NATIVE_BIN = _DIR / "build" / "native_divergence_test"
-_WASM_SYNTHESIZE = str(_REPO / "wasm_piper" / "synthesize.js")
-_WASM_JS = str(_REPO / "wasm_piper" / "build" / "piper_wasm.js")
-_WASM_WASM = str(_REPO / "wasm_piper" / "build" / "piper_wasm.wasm")
+
+
+def _model_path():
+    """Return current model path (respects voice refresh)."""
+    return _voice_paths(get_voice_model())[0]
+
+
+def _deterministic_config():
+    """Return current deterministic config path (respects voice refresh)."""
+    return _voice_paths(get_voice_model())[2]
 
 _SIMILARITY_THRESHOLD = 0.95
 
@@ -97,9 +108,7 @@ def _get_vosk_model():
     """Load or return the cached Vosk model from external/."""
     global _vosk_model
     if _vosk_model is None:
-        _vosk_model = vosk.Model(
-            model_path=str(_REPO / "external" / "vosk-model-en-us-0.22"),
-        )
+        _vosk_model = vosk.Model(model_path=str(VOSK_EXTERNAL_DIR))
     return _vosk_model
 
 
@@ -158,13 +167,13 @@ def _get_variant_name(result: AudioResult) -> str:
     return parts[idx + 1]
 
 
-def _transcription_similarity(a: AudioResult, b: AudioResult) -> float:
+def _transcription_similarity(a: AudioResult, b: AudioResult) -> tuple[float, str, str]:
     """Compare two audio results by transcribing and computing SequenceMatcher ratio.
 
     Native WAVs (32-bit float) are transcribed in-memory from the numpy array.
     Python/WASM WAVs (16-bit PCM) are read from disk.
 
-    Returns 0.0–1.0 ratio, robust to minor ASR word-level errors.
+    Returns (0.0–1.0 ratio, text1, text2), robust to minor ASR word-level errors.
     """
     if _get_variant_name(a) == "native":
         text1 = _transcribe_audio_array(a.audio, a.sample_rate)
@@ -177,7 +186,7 @@ def _transcription_similarity(a: AudioResult, b: AudioResult) -> float:
         text2 = _transcribe_wav_file(b.wav_path)
 
     matcher = difflib.SequenceMatcher(None, text1.split(), text2.split(), autojunk=False)
-    return max(matcher.ratio(), 0.0)
+    return max(matcher.ratio(), 0.0), text1, text2
 
 
 # ── Synthesis helpers ─────────────────────────────────────
@@ -196,7 +205,7 @@ def _synthesize_native(text: str, wav_path: Path) -> AudioResult:
     if not _ensure_native_built():
         pytest.skip("Native CMake configure/build failed")
     result = subprocess.run(
-        [str(_NATIVE_BIN), str(_DETERMINISTIC_CONFIG), str(_MODEL_PATH),
+        [str(_NATIVE_BIN), str(_deterministic_config()), str(_model_path()),
          _ESPEAK_DATA, text, str(wav_path)],
         capture_output=True, timeout=120,
     )
@@ -213,9 +222,9 @@ def _synthesize_wasm(text: str, wav_path: Path) -> AudioResult:
         pytest.skip("WASM build not found at wasm_piper/build/")
 
     result = subprocess.run(
-        ["node", _WASM_SYNTHESIZE, str(_MODEL_PATH), str(_DETERMINISTIC_CONFIG), text, str(wav_path)],
+        ["node", str(_WASM_SYNTHESIZE), str(_model_path()), str(_deterministic_config()), text, str(wav_path)],
         capture_output=True, timeout=180,
-        cwd=str(_REPO),
+        cwd=str(REPO),
     )
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
@@ -242,7 +251,7 @@ def _ensure_native_built():
     result = subprocess.run(
         ["cmake", str(_DIR), "-B", str(build_dir)],
         capture_output=True, text=True,
-        cwd=str(_REPO),
+        cwd=str(REPO),
     )
     if result.returncode != 0:
         _native_built = False
@@ -252,7 +261,7 @@ def _ensure_native_built():
     result = subprocess.run(
         ["cmake", "--build", str(build_dir)],
         capture_output=True, text=True,
-        cwd=str(_REPO),
+        cwd=str(REPO),
     )
     if result.returncode != 0:
         _native_built = False
@@ -272,7 +281,7 @@ def _wasm_available() -> bool:
 @pytest.fixture(scope="module")
 def piper_voice():
     """Load the Piper voice model once for all Python synthesis calls."""
-    return PiperVoice.load(str(_MODEL_PATH))
+    return PiperVoice.load(str(_model_path()))
 
 
 # ── Module-scoped fixture: synthesize all WAVs once ───────
@@ -311,8 +320,12 @@ def test_python_vs_native(i, text, divergence_wavs):
     py = divergence_wavs[("python", i)]
     native = divergence_wavs[("native", i)]
 
-    sim = _transcription_similarity(py, native)
-    assert sim >= _SIMILARITY_THRESHOLD, f"Python-Native mismatch for: {text[:60]}"
+    sim, text1, text2 = _transcription_similarity(py, native)
+    assert sim >= _SIMILARITY_THRESHOLD, (
+        f"Python-Native mismatch for: {text[:60]}\n"
+        f"  Python:  '{text1}'\n"
+        f"  Native:  '{text2}'"
+    )
 
 
 @pytest.mark.parametrize("i,text", enumerate(QUOTES, 1))
@@ -321,8 +334,12 @@ def test_python_vs_wasm(i, text, divergence_wavs):
     py = divergence_wavs[("python", i)]
     wasm = divergence_wavs[("wasm", i)]
 
-    sim = _transcription_similarity(py, wasm)
-    assert sim >= _SIMILARITY_THRESHOLD, f"Python-WASM mismatch for: {text[:60]}"
+    sim, text1, text2 = _transcription_similarity(py, wasm)
+    assert sim >= _SIMILARITY_THRESHOLD, (
+        f"Python-WASM mismatch for: {text[:60]}\n"
+        f"  Python:  '{text1}'\n"
+        f"  WASM:    '{text2}'"
+    )
 
 
 @pytest.mark.parametrize("i,text", enumerate(QUOTES, 1))
@@ -331,8 +348,12 @@ def test_native_vs_wasm(i, text, divergence_wavs):
     native = divergence_wavs[("native", i)]
     wasm = divergence_wavs[("wasm", i)]
 
-    sim = _transcription_similarity(native, wasm)
-    assert sim >= _SIMILARITY_THRESHOLD, f"Native-WASM mismatch for: {text[:60]}"
+    sim, text1, text2 = _transcription_similarity(native, wasm)
+    assert sim >= _SIMILARITY_THRESHOLD, (
+        f"Native-WASM mismatch for: {text[:60]}\n"
+        f"  Native:  '{text1}'\n"
+        f"  WASM:    '{text2}'"
+    )
 
 
 # ── Negative tests: different text should NOT be similar ──
@@ -346,8 +367,10 @@ def test_different_texts_not_similar(variant, divergence_wavs):
     a = divergence_wavs[(variant, 1)]  # "To be, or not to be..."
     b = divergence_wavs[(variant, 20)]  # "Let there be light."
 
-    sim = _transcription_similarity(a, b)
+    sim, text1, text2 = _transcription_similarity(a, b)
     assert sim < 0.5, (
         f"Same-variant different-text similarity {sim:.4f} -- "
-        "test logic may not distinguish dissimilar audio"
+        f"test logic may not distinguish dissimilar audio\n"
+        f"  Quote 1: '{text1}'\n"
+        f"  Quote 2: '{text2}'"
     )

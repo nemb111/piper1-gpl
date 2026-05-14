@@ -2,8 +2,8 @@
 """Setup script for Piper divergence tests.
 
 Installs Python dependencies, builds the native C++ test binary via CMake,
-downloads voice models and the Vosk speech recognition model, copies
-espeak-ng data for WASM, and builds WASM if Emscripten is available.
+downloads voice models and the Vosk speech recognition model, and
+builds WASM if Emscripten is available.
 
 Usage:
     python setup.py                               # run all steps (skip if already set up)
@@ -11,7 +11,6 @@ Usage:
     python setup.py build-native                  # build native binary only
     python setup.py download-model                # download Vosk model only
     python setup.py download-voices               # download voice models only
-    python setup.py espeak-data                   # copy espeak-ng data for WASM
     python setup.py deterministic-config          # generate deterministic config
     python setup.py build-wasm                    # build WASM binary (if emcc available)
     python setup.py clean                         # remove build artifacts
@@ -20,54 +19,32 @@ Usage:
 """
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
 import urllib.request
 import zipfile
-from pathlib import Path
 
-_DIR = Path(__file__).resolve().parent
-_REPO = _DIR.parent.parent
-
-# ── Paths ──────────────────────
-
-_MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip"
-EXTERNAL_DIR = Path(os.environ.get("EXTERNAL_DIR", _REPO / "external"))
-VOSK_EXTERNAL_DIR = EXTERNAL_DIR / "vosk-model-en-us-0.22"
-_MODEL_ZIP = EXTERNAL_DIR / "vosk-model-en-us-0.22.zip"
-
-_NATIVE_BUILD = _DIR / "build"
-_NATIVE_BIN = _NATIVE_BUILD / "native_divergence_test"
-
-# Voice model for divergence tests (overridden by --voice argument in main())
-# All _VOICE_* paths are recomputed in main() when --voice is specified.
-_DEFAULT_VOICE = "en_US-lessac-medium"
-_VOICE_MODEL = _DEFAULT_VOICE
-_PIPER_VOICES_DIR = EXTERNAL_DIR / "piper_voices"
-_VOICE_ONNX = _PIPER_VOICES_DIR / f"{_VOICE_MODEL}.onnx"
-_VOICE_JSON = _PIPER_VOICES_DIR / f"{_VOICE_MODEL}.onnx.json"
-_WASM_MODEL_DIR = _REPO / "wasm_piper" / "tests" / "data"
-_ESPEAK_SRC = _REPO / "src" / "piper" / "espeak-ng-data"
-_ESPEAK_WASM = _WASM_MODEL_DIR / "espeak-ng-data"
-
-# Deterministic config for native/WASM tests
-_DETERMINISTIC_CONFIG_DIR = _DIR / "data"
-_DETERMINISTIC_CONFIG_PATH = _DETERMINISTIC_CONFIG_DIR / f"{_VOICE_MODEL}-deterministic.onnx.json"
-
-
-def _recompute_voice_paths(voice: str) -> None:
-    """Recompute all voice-dependent paths after --voice override."""
-    global _VOICE_MODEL, _VOICE_ONNX, _VOICE_JSON, _DETERMINISTIC_CONFIG_PATH
-    _VOICE_MODEL = voice
-    _VOICE_ONNX = _PIPER_VOICES_DIR / f"{_VOICE_MODEL}.onnx"
-    _VOICE_JSON = _PIPER_VOICES_DIR / f"{_VOICE_MODEL}.onnx.json"
-    _DETERMINISTIC_CONFIG_PATH = _DETERMINISTIC_CONFIG_DIR / f"{_VOICE_MODEL}-deterministic.onnx.json"
-
-# WASM build artifacts
-_WASM_JS = _REPO / "wasm_piper" / "build" / "piper_wasm.js"
-_WASM_WASM = _REPO / "wasm_piper" / "build" / "piper_wasm.wasm"
+from config import (
+    DETERMINISTIC_CONFIG_DIR,
+    DETERMINISTIC_CONFIG_PATH as _DETERMINISTIC_CONFIG_PATH,
+    DIR,
+    EXTERNAL_DIR,
+    NATIVE_BIN,
+    NATIVE_BUILD,
+    PIPER_VOICES_DIR,
+    REPO,
+    VOSK_EXTERNAL_DIR,
+    VOSK_MODEL_URL,
+    VOSK_MODEL_ZIP,
+    WASM_JS,
+    WASM_WASM,
+    WASM_SYNTHESIZE,
+    DEFAULT_VOICE,
+    _voice_paths,
+    get_voice_model,
+    refresh,
+)
 
 PIP_CMD = [sys.executable, "-m", "pip"]
 
@@ -129,12 +106,8 @@ def _is_emcc_available() -> bool:
 
 def voice_models_exist() -> bool:
     """Check that voice model files exist in external/piper_voices."""
-    return _VOICE_ONNX.exists() and _VOICE_JSON.exists()
-
-
-def espeak_data_exists() -> bool:
-    """Check that espeak-ng-data is available for WASM builds."""
-    return _ESPEAK_WASM.exists() and (_ESPEAK_WASM / "phontab").exists()
+    onnx, json_cfg, _ = _voice_paths(get_voice_model())
+    return onnx.exists() and json_cfg.exists()
 
 
 def deterministic_config_exists() -> bool:
@@ -144,9 +117,8 @@ def deterministic_config_exists() -> bool:
 
 def deps_exist() -> bool:
     """Check if all prerequisites are already set up."""
-    return (all_deps_met() and _NATIVE_BIN.exists() and VOSK_EXTERNAL_DIR.exists()
-            and voice_models_exist() and espeak_data_exists()
-            and deterministic_config_exists())
+    return (all_deps_met() and NATIVE_BIN.exists() and VOSK_EXTERNAL_DIR.exists()
+            and voice_models_exist() and deterministic_config_exists())
 
 
 def install_deps():
@@ -175,7 +147,7 @@ def install_deps():
 
 def ensure_piper_installed():
     """Build the Piper Python package (prerequisite for CMake-native build)."""
-    piper_src = _REPO / "src"
+    piper_src = REPO / "src"
     if piper_src.glob("**/espeakbridge.cpython-*.so"):
         print("Piper Python module already built, skipping.")
         return
@@ -183,7 +155,7 @@ def ensure_piper_installed():
     print("=== Building Piper Python package ===")
     run(
         [sys.executable, "setup.py", "build_ext", "--inplace"],
-        cwd=_REPO,
+        cwd=REPO,
     )
     print("Piper Python package built.")
 
@@ -194,21 +166,21 @@ def build_native():
 
     ensure_piper_installed()
 
-    if _NATIVE_BIN.exists():
-        print(f"Native binary already exists at {_NATIVE_BIN}, skipping build.")
+    if NATIVE_BIN.exists():
+        print(f"Native binary already exists at {NATIVE_BIN}, skipping build.")
         return
 
-    if _NATIVE_BUILD.exists():
-        print(f"Cleaning partial build at {_NATIVE_BUILD}")
-        shutil.rmtree(_NATIVE_BUILD)
-    _NATIVE_BUILD.mkdir(parents=True, exist_ok=True)
+    if NATIVE_BUILD.exists():
+        print(f"Cleaning partial build at {NATIVE_BUILD}")
+        shutil.rmtree(NATIVE_BUILD)
+    NATIVE_BUILD.mkdir(parents=True, exist_ok=True)
 
     print("Configuring CMake...")
     result = subprocess.run(
-        ["cmake", str(_DIR), "-B", str(_NATIVE_BUILD)],
+        ["cmake", str(DIR), "-B", str(NATIVE_BUILD)],
         capture_output=True,
         text=True,
-        cwd=str(_REPO),
+        cwd=str(REPO),
     )
     if result.returncode != 0:
         print("CMake configure stderr:", file=sys.stderr)
@@ -217,21 +189,21 @@ def build_native():
 
     print("Building...")
     result = subprocess.run(
-        ["cmake", "--build", str(_NATIVE_BUILD), "-j"],
+        ["cmake", "--build", str(NATIVE_BUILD), "-j"],
         capture_output=True,
         text=True,
-        cwd=str(_REPO),
+        cwd=str(REPO),
     )
     if result.returncode != 0:
         print("CMake build stderr:", file=sys.stderr)
         print(result.stderr, file=sys.stderr)
         sys.exit(1)
 
-    if not _NATIVE_BIN.exists():
-        print(f"Error: binary not found at {_NATIVE_BIN}", file=sys.stderr)
+    if not NATIVE_BIN.exists():
+        print(f"Error: binary not found at {NATIVE_BIN}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Native binary built: {_NATIVE_BIN}")
+    print(f"Native binary built: {NATIVE_BIN}")
 
 
 def download_model():
@@ -244,19 +216,19 @@ def download_model():
 
     EXTERNAL_DIR.mkdir(parents=True, exist_ok=True)
 
-    if not _MODEL_ZIP.exists():
-        print(f"Downloading {_MODEL_URL} ...")
+    if not VOSK_MODEL_ZIP.exists():
+        print(f"Downloading {VOSK_MODEL_URL} ...")
         print("This is ~1.8GB and may take several minutes.")
-        urllib.request.urlretrieve(_MODEL_URL, _MODEL_ZIP)
+        urllib.request.urlretrieve(VOSK_MODEL_URL, VOSK_MODEL_ZIP)
         print("Download complete.")
-        print(f"Extracting {_MODEL_ZIP} ...")
-        with zipfile.ZipFile(_MODEL_ZIP, "r") as zf:
-            zf.extractall(str(_MODEL_ZIP.parent))
+        print(f"Extracting {VOSK_MODEL_ZIP} ...")
+        with zipfile.ZipFile(VOSK_MODEL_ZIP, "r") as zf:
+            zf.extractall(str(VOSK_MODEL_ZIP.parent))
         print("Extraction complete.")
     else:
-        print(f"Zip already exists at {_MODEL_ZIP}, extracting...")
-        with zipfile.ZipFile(_MODEL_ZIP, "r") as zf:
-            zf.extractall(str(_MODEL_ZIP.parent))
+        print(f"Zip already exists at {VOSK_MODEL_ZIP}, extracting...")
+        with zipfile.ZipFile(VOSK_MODEL_ZIP, "r") as zf:
+            zf.extractall(str(VOSK_MODEL_ZIP.parent))
 
     print(f"Model available at: {VOSK_EXTERNAL_DIR}")
 
@@ -264,40 +236,16 @@ def download_model():
 def download_voices():
     """Download voice models needed for divergence tests."""
     print("=== Downloading voice models ===")
-    _PIPER_VOICES_DIR.mkdir(parents=True, exist_ok=True)
+    PIPER_VOICES_DIR.mkdir(parents=True, exist_ok=True)
 
     if voice_models_exist():
-        print(f"Voice models already exist at {_PIPER_VOICES_DIR}, skipping download.")
+        print(f"Voice models already exist at {PIPER_VOICES_DIR}, skipping download.")
         return
 
     from piper.download_voices import download_voice
 
-    download_voice(_VOICE_MODEL, _PIPER_VOICES_DIR)
-    print(f"Voice models available at: {_PIPER_VOICES_DIR}")
-
-
-def copy_espeak_data():
-    """Copy espeak-ng data to WASM test data and external/ directories."""
-    print("=== Setting up espeak-ng data for WASM ===")
-    if not _ESPEAK_SRC.exists():
-        print(f"WARNING: source espeak-ng-data not found at {_ESPEAK_SRC}, skipping.")
-        return
-
-    # Copy to wasm_piper/tests/data/
-    _WASM_MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(_ESPEAK_SRC, _ESPEAK_WASM, dirs_exist_ok=True)
-    print(f"Copied espeak-ng-data to {_ESPEAK_WASM}")
-
-    # Copy to external/ for WASM CMake preload
-    ext_espeak = EXTERNAL_DIR / "espeak-ng-data"
-    if not ext_espeak.exists():
-        ext_espeak.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(_ESPEAK_SRC, ext_espeak, dirs_exist_ok=True)
-        print(f"Copied espeak-ng-data to {ext_espeak}")
-    elif not espeak_data_exists():
-        ext_espeak.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(_ESPEAK_SRC, ext_espeak, dirs_exist_ok=True)
-        print(f"Copied espeak-ng-data to {ext_espeak}")
+    download_voice(get_voice_model(), PIPER_VOICES_DIR)
+    print(f"Voice models available at: {PIPER_VOICES_DIR}")
 
 
 def copy_deterministic_config():
@@ -309,7 +257,8 @@ def copy_deterministic_config():
 
     import json
 
-    source = _PIPER_VOICES_DIR / f"{_VOICE_MODEL}.onnx.json"
+    voice = get_voice_model()
+    source = PIPER_VOICES_DIR / f"{voice}.onnx.json"
     if not source.exists():
         print(f"WARNING: source config not found at {source}, skipping.")
         return
@@ -319,9 +268,9 @@ def copy_deterministic_config():
     cfg["inference"]["noise_scale"] = 0.0
     cfg["inference"]["noise_w"] = 0.0
 
-    _DETERMINISTIC_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    DETERMINISTIC_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with open(_DETERMINISTIC_CONFIG_PATH, "w") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(cfg, f, indent=2, ensure_ascii=True)
         f.write("\n")
     print(f"Created {_DETERMINISTIC_CONFIG_PATH}")
 
@@ -330,16 +279,16 @@ def build_wasm():
     """Build WASM piper binary via wasm_piper/build.py."""
     print("=== Building WASM piper binary ===")
 
-    if _WASM_JS.exists() and _WASM_WASM.exists():
+    if WASM_JS.exists() and WASM_WASM.exists():
         print(f"WASM build already exists, skipping.")
         return
 
-    build_script = _REPO / "wasm_piper" / "build.py"
+    build_script = REPO / "wasm_piper" / "build.py"
     print("Running wasm_piper/build.py (this may take a while)...")
     result = subprocess.run(
         [sys.executable, str(build_script)],
         capture_output=True, text=True,
-        cwd=str(_REPO),
+        cwd=str(REPO),
     )
     if result.returncode != 0:
         print("WASM build failed:", file=sys.stderr)
@@ -347,8 +296,8 @@ def build_wasm():
         print(result.stdout, file=sys.stderr)
         return
 
-    if _WASM_JS.exists() and _WASM_WASM.exists():
-        print(f"WASM build complete: {_WASM_JS}, {_WASM_WASM}")
+    if WASM_JS.exists() and WASM_WASM.exists():
+        print(f"WASM build complete: {WASM_JS}, {WASM_WASM}")
     else:
         print("Warning: build reported success but artifacts not found.", file=sys.stderr)
 
@@ -356,18 +305,17 @@ def build_wasm():
 def clean():
     """Remove build artifacts."""
     print("=== Cleaning build artifacts ===")
-    for d in [_NATIVE_BUILD, _REPO / "build"]:
+    for d in [NATIVE_BUILD, REPO / "build"]:
         if d.exists():
             print(f"Removing {d}")
             shutil.rmtree(d)
-    # Clean WASM test data and deterministic config
-    for f in [_ESPEAK_WASM, _DETERMINISTIC_CONFIG_PATH]:
-        if f.exists():
-            if f.is_symlink():
-                f.unlink()
-            elif f.is_dir():
-                shutil.rmtree(f)
-            print(f"Removing {f}")
+    # Clean deterministic config
+    if _DETERMINISTIC_CONFIG_PATH.exists():
+        if _DETERMINISTIC_CONFIG_PATH.is_symlink():
+            _DETERMINISTIC_CONFIG_PATH.unlink()
+        elif _DETERMINISTIC_CONFIG_PATH.is_dir():
+            shutil.rmtree(_DETERMINISTIC_CONFIG_PATH)
+        print(f"Removing {_DETERMINISTIC_CONFIG_PATH}")
     print("Clean complete.")
 
 
@@ -383,7 +331,7 @@ def main():
     parser.add_argument(
         "--voice",
         type=str,
-        default=_DEFAULT_VOICE,
+        default=DEFAULT_VOICE,
         metavar="VOICE",
         help="Voice to use for divergence tests (default: %(default)s)",
     )
@@ -393,7 +341,7 @@ def main():
         default="all",
         choices=[
             "all", "deps", "build-native", "download-model",
-            "download-voices", "espeak-data", "deterministic-config",
+            "download-voices", "deterministic-config",
             "build-wasm", "clean",
         ],
         help="Which step to run (default: all)",
@@ -405,7 +353,7 @@ def main():
         list_voices()
         return
 
-    _recompute_voice_paths(args.voice)
+    refresh(args.voice)
 
     # When running all steps, exit early if everything is already set up
     if args.command == "all" and deps_exist():
@@ -413,13 +361,12 @@ def main():
         return
 
     step_map = {
-        "all": ["deps", "build-native", "download-voices", "espeak-data",
+        "all": ["deps", "build-native", "download-voices",
                 "deterministic-config", "download-model", "build-wasm"],
         "deps": ["deps"],
         "build-native": ["build-native"],
         "download-model": ["download-model"],
         "download-voices": ["download-voices"],
-        "espeak-data": ["espeak-data"],
         "deterministic-config": ["deterministic-config"],
         "build-wasm": ["build-wasm"],
         "clean": ["clean"],
@@ -434,8 +381,6 @@ def main():
             download_model()
         elif step == "download-voices":
             download_voices()
-        elif step == "espeak-data":
-            copy_espeak_data()
         elif step == "deterministic-config":
             copy_deterministic_config()
         elif step == "build-wasm":
