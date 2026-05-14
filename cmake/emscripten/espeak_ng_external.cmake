@@ -48,8 +48,10 @@ function(configure_espeak_ng_emscripten)
     set(_NATIVE_BUILD_SRC "${_ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build")
     set(_CROSS_UCD_LIB "${_CROSS_BUILD_DIR}/src/ucd-tools/libucd.a")
 
-    # Cross-compile needs its own install dir so the EXISTS check doesn't block it
-    set(_CROSS_INSTALL_DIR "${CMAKE_BINARY_DIR}/espeak_ng-cross-install")
+    # Cross-compile needs its own install dir so the EXISTS check doesn't block it.
+    # Use a short, stable prefix so the install path is baked into the library as a
+    # short absolute path independent of mount points or build directory locations.
+    set(_CROSS_INSTALL_DIR "/espeak_ng_cross")
     set(_CROSS_ESPEAKNG_LIB "${_CROSS_INSTALL_DIR}/lib/libespeak-ng.a")
     set(_ESPEAKNG_INSTALL_DIR_OVERRIDE "${_CROSS_INSTALL_DIR}")
 

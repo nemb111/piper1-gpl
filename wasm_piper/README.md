@@ -16,7 +16,7 @@ Emscripten will be **auto-detected** or **auto-downloaded** by the CMake build. 
 ### 1. Build (Mock Mode)
 
 ```sh
-cmake -B wasm_piper/build -S wasm_piper  # auto-runs npm install if onnxruntime-web not present
+python3 wasm_piper/build.py                    # downloads tools, onnxruntime-web, builds WASM, downloads default voice
 cmake --build wasm_piper/build --target piper_wasm_mock_integration_test
 ```
 
@@ -27,17 +27,16 @@ This builds:
 
 The compiled WASM module (`piper_wasm`) can synthesize speech using the C++ path for phonemization (via the `piper_create` / `piper_synthesize_start` APIs) and onnxruntime-web for inference.
 
-**Step 1 — Build:**
+**Step 1 — Build (via build.py):**
 ```sh
-cmake -B wasm_piper/build -S wasm_piper
-cmake --build wasm_piper/build --target piper_wasm  # auto-runs npm install if onnxruntime-web not present
+python3 wasm_piper/build.py
 ```
-This produces `wasm_piper/build/piper_wasm.{js,wasm,data}`.
+This produces `wasm_piper/build/piper_wasm.{js,wasm}` and downloads the default voice (`en_US-lessac-medium`) to `external/piper_voices/`.
 
 **Step 2 — Synthesize:**
 ```sh
 cd wasm_piper
-node synthesize.js ../external/en_US-amy-low.onnx ../external/en_US-amy-low.onnx.json "Hello from the WASM build" /tmp/output.wav
+node synthesize.js ../external/piper_voices/en_US-lessac-medium.onnx ../external/piper_voices/en_US-lessac-medium.onnx.json "Hello from the WASM build" /tmp/output.wav
 ```
 
 ## Synthesizing Audio
@@ -50,13 +49,15 @@ cd wasm_piper
 # CMake auto-installs onnxruntime-web into external/node_modules/ on first build.
 # Synthesize "The quick brown fox jumps over the lazy dog"
 node synthesize.js \
-  ../external/en_US-amy-low.onnx \
-  ../external/en_US-amy-low.onnx.json \
+  ../external/piper_voices/en_US-lessac-medium.onnx \
+  ../external/piper_voices/en_US-lessac-medium.onnx.json \
   "The quick brown fox jumps over the lazy dog" \
-  output_fox.wav
+  output.wav
 ```
 
-**Defaults:** Unset arguments default to `model.onnx`, `model.onnx.json`, `"hello world"`, and `synthesize.wav`.
+**Usage:** `node synthesize.js <model.onnx> <model.onnx.json> <text> [output.wav]`
+
+The model and config paths are required. `output.wav` defaults to `synthesize.wav` if omitted.
 
 The espeak-ng binary and data path are resolved automatically. Override with environment variables:
 
@@ -69,7 +70,7 @@ The script also exports a `synthesize()` function for programmatic use:
 
 ```js
 const { synthesize } = require('./synthesize');
-await synthesize('../external/en_US-amy-low.onnx', '../external/en_US-amy-low.onnx.json', 'hello world', 'output.wav');
+await synthesize('../external/en_US-lessac-medium.onnx', '../external/en_US-lessac-medium.onnx.json', 'hello world', 'output.wav');
 ```
 
 ## Understanding Test Modes
@@ -90,6 +91,7 @@ The compiled `piper_wasm.js` has `ort_shim.js` merged into it at build time (via
 ```
 wasm_piper/
   CMakeLists.txt              # Main CMake config (emscripten + WASM targets)
+  build.py                    # Build script: downloads tools, ort_shim, builds WASM, downloads voices
   synthesize.js               # Unified synthesis script (onnxruntime-web + espeak-ng) -> WAV
   shim/
     src/
@@ -102,9 +104,11 @@ wasm_piper/
     test_wasm_c_api.js        # WASM C API boundary test (symbol exports, struct layout)
     test_wasm_integration.js  # JS test runner (mock ONNX mode)
     wasm_integration_main.cpp # C++ entry point (native + WASM)
-  external/
-    piper_voices/             # Symlinks to voice models for WASM preload
-    espeak-ng-data/           # Pre-built espeak data files for WASM preload
-    en_US-amy-low.onnx        # Real voice model (63 MB, host access)
-    en_US-amy-low.onnx.json   # Real voice config
+  external/                   # Node.js, Emscripten, voices (real path resolved at build time)
+    node_modules/             # onnxruntime-web (auto-installed on first build)
+    emsdk-*/                  # Emscripten SDK (downloaded by build.py)
+    node-v*/                  # Node.js binary distribution (downloaded by build.py)
+    piper_voices/             # Voice models downloaded by build.py
+      en_US-lessac-medium.onnx       # Default voice model
+      en_US-lessac-medium.onnx.json  # Default voice config
 ```

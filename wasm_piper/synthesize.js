@@ -12,7 +12,7 @@
  *
  * Environment variables:
  *   ESPEAK_DATA   - Path to espeak-ng data directory within WASM FS
- *                   (default: /espeak-ng-data from preloaded external/)
+ *                   (default: /espeak_ng_cross/share/espeak-ng-data from cross-compiled install)
  *   MODEL_PATH    - Override model path in WASM FS
  *                   (default: /piper_voices/test_voice.onnx from preloaded external/)
  *   CONFIG_PATH   - Override config path in WASM FS
@@ -30,10 +30,10 @@ const BASE_DIR = path.resolve(__DIR__);
 const WASM_JS = path.join(BASE_DIR, 'build', 'piper_wasm.js');
 const WASM_WASM = path.join(BASE_DIR, 'build', 'piper_wasm.wasm');
 
-// WASM FS paths (files preloaded via --preload-file external/espeak-ng-data@/ external/piper_voices@/)
+// WASM FS paths (files preloaded via --preload-file in CMakeLists.txt)
 const DEFAULT_MODEL_WASM   = '/piper_voices/en_US-lessac-medium.onnx';
 const DEFAULT_CONFIG_WASM  = '/piper_voices/en_US-lessac-medium.onnx.json';
-const DEFAULT_ESPEAK       = '/espeak-ng-data';
+const DEFAULT_ESPEAK       = '/espeak_ng_cross/share/espeak-ng-data';
 
 // Temp directory for host-accessible copies of preloaded WASM FS files.
 let TEMP_DIR;

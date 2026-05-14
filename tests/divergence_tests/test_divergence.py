@@ -35,15 +35,17 @@ from piper import PiperVoice, SynthesisConfig  # noqa: E402
 _DIR = Path(__file__).resolve().parent
 _REPO = _DIR.parent.parent  # repo root = tests/divergence_tests/.. = tests/.. = repo root
 _WAV_DIR = _REPO / "external" / "divergence_wav"
+_PIPER_VOICES_DIR = _REPO / "external" / "piper_voices"
+_DEFAULT_VOICE = "en_US-lessac-medium"
 
 def _ensure_wav_dir():
     """Create divergence_wav/{python,native,wasm} dirs if they don't exist."""
     _WAV_DIR.mkdir(parents=True, exist_ok=True)
     for v in ("python", "native", "wasm"):
         (_WAV_DIR / v).mkdir(exist_ok=True)
-_MODEL_PATH = _DIR.parent.parent / "wasm_piper" / "tests" / "data" / "en_US-lessac-medium.onnx"
+_MODEL_PATH = _PIPER_VOICES_DIR / f"{_DEFAULT_VOICE}.onnx"
 _CONFIG_PATH = _MODEL_PATH.with_suffix(".onnx.json")
-_DETERMINISTIC_CONFIG = _DIR / "data" / "en_US-lessac-medium-deterministic.onnx.json"
+_DETERMINISTIC_CONFIG = _DIR / "data" / f"{_DEFAULT_VOICE}-deterministic.onnx.json"
 _ESPEAK_DATA = str(_REPO / "src" / "piper" / "espeak-ng-data")
 _NATIVE_BIN = _DIR / "build" / "native_divergence_test"
 _WASM_SYNTHESIZE = str(_REPO / "wasm_piper" / "synthesize.js")

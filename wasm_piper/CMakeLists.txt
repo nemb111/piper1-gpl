@@ -82,7 +82,7 @@ set_target_properties(piper_wasm PROPERTIES
          -s ASYNCIFY=1 -s EXIT_RUNTIME=1 -s WASM_BIGINT=1 -s FILESYSTEM=1 \
          -s INITIAL_MEMORY=2147483648 -s STACK_SIZE=67108864 -s DISABLE_EXCEPTION_CATCHING=0 \
          -s ALLOW_TABLE_GROWTH=1 -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=1 --no-entry \
-         --preload-file ${PIPER_WASM_DATA_DIR}/espeak-ng-data@/ --preload-file ${PIPER_WASM_DATA_DIR}/piper_voices@/"
+         --preload-file ${CMAKE_CURRENT_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data@/ --preload-file ${CMAKE_CURRENT_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data@/espeak_ng_cross/share/espeak-ng-data --preload-file ${PIPER_WASM_DATA_DIR}/piper_voices@/"
     OUTPUT_NAME "piper_wasm"
     SUFFIX ".js"
 )
