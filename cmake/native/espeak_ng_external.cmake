@@ -11,6 +11,7 @@
 #   PIPER_ESPEAKNG_CMAKE_ARGS           — extra CMAKE_ARGS for ExternalProject
 
 include(ExternalProject)
+include(${CMAKE_CURRENT_LIST_DIR}/options.cmake)
 
 # Get common CMAKE_ARGS shared between native and cross-compilation builds
 function(get_espeak_ng_common_cmake_args INSTALL_DIR OUT_VAR)

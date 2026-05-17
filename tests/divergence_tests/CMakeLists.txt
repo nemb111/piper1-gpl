@@ -15,7 +15,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../libpiper libpiper_build)
 
 # ── Test executable ──
 add_executable(native_divergence_test
-    ${CMAKE_CURRENT_SOURCE_DIR}/native_synthesis.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/native_synthesis.cpp
 )
 
 target_link_libraries(native_divergence_test PRIVATE piper)

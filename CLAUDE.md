@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Piper is a fast, local neural text-to-speech (TTS) engine built by the Open Home Foundation. It uses espeak-ng for phonemization and ONNX Runtime for inference. The project has two main code paths:
+Note: `uv` is available as a fast Python package manager (use `uv pip install` instead of `pip install`, `uv add` instead of `pip install -e`, etc.).
 
 - **Python package** (`src/piper/`): The primary interface, providing a CLI (`piper`), Python API (`PiperVoice`), and Flask HTTP server. This is the main development focus.
 - **C/C++ library** (`libpiper/`): A standalone C API (`piper_create`, `piper_synthesize_start`, `piper_synthesize_next`) for embedding Piper in other applications. It bundles espeak-ng and onnxruntime.
@@ -103,6 +104,7 @@ pytest tests/divergence_tests/test_divergence.py -v -k "test_different_texts_not
 ```
 
 **Acceptance criteria for WASM code changes:** Always run `python3 tests/divergence_tests/setup.py all` before running divergence tests — WASM builds (ort_shim, CMakeLists.txt, shim/src/) require the full divergence suite (Python vs native vs WASM) to validate correctness.
+**Acceptance criteria for divergence_tests changes:** `uv run mypy tests/divergence_tests/config.py tests/divergence_tests/setup.py tests/divergence_tests/test_divergence.py --ignore-missing-imports` must return clean (no issues).
 
 **openl3 install caveat (Python 3.12):** openl3 0.4.2 uses the removed `imp` module. Before `pip install "piper-tts[divergence]"`, patch `import imp` → `import importlib.util` + `imp.load_source()` → `importlib.util` in `openl3/setup.py`. Install with `--no-deps` to avoid dependency conflicts.
 
@@ -121,6 +123,13 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - `src/piper/train/vits/lightning.py` - PyTorch Lightning module
 - `src/piper/train/vits/models.py` - VITS model architecture
 - `src/piper/train/export_onnx.py` - Export trained model to ONNX
+
+### Divergence Test Memory Notes
+
+- **Vosk model RAM usage**: `vosk-model-en-us-0.22` (1.8GB disk) expands to ~4.7GB RSS in RAM. This is the dominant memory consumer in divergence tests.
+- **Memory debugging**: Use `VmRSS` from `/proc/{pid}/status` to measure Python RSS at each step — most reliable way to diagnose memory leaks/accumulation.
+- **Low-RAM setups**: For machines with <16GB RAM, consider `vosk-model-small-en-us-0.15` (~100MB disk, ~500MB RAM). Same transcription quality for divergence testing.
+- **Memory optimization in `test_divergence.py`**: Audio is lazy-loaded from disk (not cached as numpy arrays); Piper model is freed after synthesis phase. These two changes alone reduced peak memory from 5-6GB to ~3GB.
 
 ## Architecture Notes
 

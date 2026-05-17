@@ -10,8 +10,8 @@ Usage:
 
 Requirements:
     pip install vosk soundfile librosa
-    # 1.8GB Vosk model: external/vosk-model-en-us-0.22
-    # Download: https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip
+    # 100MB Vosk model: external/vosk-model-small-en-us-0.15
+    # Download: https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
     # Run: python3 tests/divergence_tests/setup.py all
 """
 
@@ -24,44 +24,50 @@ import wave
 from pathlib import Path
 from typing import NamedTuple
 
+import librosa
 import numpy as np
 import pytest
-import librosa
 import soundfile as sf
 import vosk
-
-from piper import PiperVoice, SynthesisConfig  # noqa: E402
 from config import (
     DIR as _DIR,
-    ESPEAK_DATA as _ESPEAK_DATA,
-    NATIVE_BIN as _NATIVE_BIN,
+)
+from config import (
+    ESPEAK_DATA_DIR as _ESPEAK_DATA,
+)
+from config import (
+    NATIVE_BIN_DIR as _NATIVE_BIN,
+)
+from config import (
     REPO,
-    VOSK_EXTERNAL_DIR,
-    WAV_DIR as _WAV_DIR,
-    WASM_JS as _WASM_JS,
-    WASM_WASM as _WASM_WASM,
-    WASM_SYNTHESIZE as _WASM_SYNTHESIZE,
+    VOSK_MODEL_DIR,
     get_voice_model,
-    refresh,
-    _voice_paths,
+    voice_paths,
+)
+from config import (
+    WASM_JS as _WASM_JS,
+)
+from config import (
+    WASM_SYNTHESIZE as _WASM_SYNTHESIZE,
+)
+from config import (
+    WASM_WASM as _WASM_WASM,
+)
+from config import (
+    WAV_DIR as _WAV_DIR,
 )
 
-
-def _ensure_wav_dir():
-    """Create divergence_wav/{python,native,wasm} dirs if they don't exist."""
-    _WAV_DIR.mkdir(parents=True, exist_ok=True)
-    for v in ("python", "native", "wasm"):
-        (_WAV_DIR / v).mkdir(exist_ok=True)
+from piper import PiperVoice, SynthesisConfig  # noqa: E402
 
 
 def _model_path():
     """Return current model path (respects voice refresh)."""
-    return _voice_paths(get_voice_model())[0]
+    return voice_paths(get_voice_model())[0]
 
 
 def _deterministic_config():
     """Return current deterministic config path (respects voice refresh)."""
-    return _voice_paths(get_voice_model())[2]
+    return voice_paths(get_voice_model())[2]
 
 _SIMILARITY_THRESHOLD = 0.95
 
@@ -95,8 +101,8 @@ QUOTES = [
 
 class AudioResult(NamedTuple):
     wav_path: Path
-    audio: np.ndarray
-    sample_rate: int
+    audio: np.ndarray | None = None
+    sample_rate: int = 0
 
 
 # ── Vosk transcription helpers ───────────────────────────
@@ -108,7 +114,7 @@ def _get_vosk_model():
     """Load or return the cached Vosk model from external/."""
     global _vosk_model
     if _vosk_model is None:
-        _vosk_model = vosk.Model(model_path=str(VOSK_EXTERNAL_DIR))
+        _vosk_model = vosk.Model(model_path=str(VOSK_MODEL_DIR))
     return _vosk_model
 
 
@@ -154,12 +160,6 @@ def _transcribe_wav_file(wav_path: Path) -> str:
     return _recognize(wav_bytes)
 
 
-def _transcribe_audio_array(audio: np.ndarray, sr: int) -> str:
-    """Transcribe a float numpy array using Vosk (resamples to 16 kHz if needed)."""
-    wav_bytes = _audio_to_vosk_bytes(audio, sr)
-    return _recognize(wav_bytes)
-
-
 def _get_variant_name(result: AudioResult) -> str:
     """Extract the variant name (python/native/wasm) from an AudioResult path."""
     parts = result.wav_path.parts
@@ -170,20 +170,13 @@ def _get_variant_name(result: AudioResult) -> str:
 def _transcription_similarity(a: AudioResult, b: AudioResult) -> tuple[float, str, str]:
     """Compare two audio results by transcribing and computing SequenceMatcher ratio.
 
-    Native WAVs (32-bit float) are transcribed in-memory from the numpy array.
-    Python/WASM WAVs (16-bit PCM) are read from disk.
+    Audio is always read from disk (never from cached numpy arrays) to keep peak memory
+    low -- only one WAV is loaded at a time during transcription.
 
     Returns (0.0–1.0 ratio, text1, text2), robust to minor ASR word-level errors.
     """
-    if _get_variant_name(a) == "native":
-        text1 = _transcribe_audio_array(a.audio, a.sample_rate)
-    else:
-        text1 = _transcribe_wav_file(a.wav_path)
-
-    if _get_variant_name(b) == "native":
-        text2 = _transcribe_audio_array(b.audio, b.sample_rate)
-    else:
-        text2 = _transcribe_wav_file(b.wav_path)
+    text1 = _transcribe_wav_file(a.wav_path)
+    text2 = _transcribe_wav_file(b.wav_path)
 
     matcher = difflib.SequenceMatcher(None, text1.split(), text2.split(), autojunk=False)
     return max(matcher.ratio(), 0.0), text1, text2
@@ -196,8 +189,8 @@ def _synthesize_python(text: str, wav_path: Path, voice) -> AudioResult:
     syn_config = SynthesisConfig(noise_scale=0.0, noise_w_scale=0.0)
     with wave.open(str(wav_path), "wb") as wav_file:
         voice.synthesize_wav(text, wav_file, syn_config=syn_config)
-    audio, sr = sf.read(str(wav_path))
-    return AudioResult(wav_path, audio, sr)
+    # Don't load audio into memory here -- lazy-load from disk when needed for transcription.
+    return AudioResult(wav_path, None, 0)
 
 
 def _synthesize_native(text: str, wav_path: Path) -> AudioResult:
@@ -212,8 +205,8 @@ def _synthesize_native(text: str, wav_path: Path) -> AudioResult:
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
         pytest.fail(f"Native synthesis failed (rc={result.returncode}): {stderr}")
-    audio, sr = sf.read(str(wav_path))
-    return AudioResult(wav_path, audio, sr)
+    # Don't load audio into memory here -- lazy-load from disk when needed for transcription.
+    return AudioResult(wav_path, None, 0)
 
 
 def _synthesize_wasm(text: str, wav_path: Path) -> AudioResult:
@@ -229,8 +222,8 @@ def _synthesize_wasm(text: str, wav_path: Path) -> AudioResult:
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
         pytest.fail(f"WASM synthesis failed (rc={result.returncode}): {stderr}")
-    audio, sr = sf.read(str(wav_path))
-    return AudioResult(wav_path, audio, sr)
+    # Don't load audio into memory here -- lazy-load from disk when needed for transcription.
+    return AudioResult(wav_path, None, 0)
 
 
 # ── Build helpers ─────────────────────────────────────────
@@ -288,7 +281,11 @@ def piper_voice():
 
 @pytest.fixture(scope="module")
 def divergence_wavs(piper_voice, request):
-    """Synthesize all 20 quotes from all 3 variants, return dict keyed by (variant, index)."""
+    """Synthesize all 20 quotes from all 3 variants, return dict keyed by (variant, index).
+
+    Only stores file paths -- audio is lazy-loaded from disk during transcription.
+    Piper voice model is freed after synthesis to keep memory low for transcription.
+    """
     wavs = {}
     variants = ["python", "native", "wasm"]
     synthesize_funcs = {
@@ -304,11 +301,14 @@ def divergence_wavs(piper_voice, request):
         for i, text in enumerate(QUOTES, 1):
             wav_path = variant_dir / f"div_{i:02d}.wav"
             if wav_path.exists():
-                audio, sr = sf.read(str(wav_path))
-                wavs[(variant, i)] = AudioResult(wav_path, audio, sr)
+                # Reuse existing WAV -- no audio array loaded; lazy-load during transcription.
+                wavs[(variant, i)] = AudioResult(wav_path, None, 0)
             else:
                 wavs[(variant, i)] = synthesize_funcs[variant](text, wav_path)
 
+    # Piper model is no longer needed after synthesis; free it before transcription phase.
+    del piper_voice
+    import gc; gc.collect()
     return wavs
 
 

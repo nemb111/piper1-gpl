@@ -9,7 +9,7 @@ Usage:
     python setup.py                               # run all steps (skip if already set up)
     python setup.py deps                          # install Python dependencies only
     python setup.py build-native                  # build native binary only
-    python setup.py download-model                # download Vosk model only
+    python setup.py download-vosk-model                # download Vosk model only
     python setup.py download-voices               # download voice models only
     python setup.py deterministic-config          # generate deterministic config
     python setup.py build-wasm                    # build WASM binary (if emcc available)
@@ -24,26 +24,25 @@ import subprocess
 import sys
 import urllib.request
 import zipfile
+from typing import Any, List
 
 from config import (
+    DEFAULT_VOICE,
     DETERMINISTIC_CONFIG_DIR,
-    DETERMINISTIC_CONFIG_PATH as _DETERMINISTIC_CONFIG_PATH,
     DIR,
     EXTERNAL_DIR,
-    NATIVE_BIN,
-    NATIVE_BUILD,
+    NATIVE_BIN_DIR,
+    NATIVE_BUILD_DIR,
     PIPER_VOICES_DIR,
     REPO,
-    VOSK_EXTERNAL_DIR,
+    VOSK_MODEL_DIR,
     VOSK_MODEL_URL,
-    VOSK_MODEL_ZIP,
+    VOSK_MODEL_ZIP_DIR,
     WASM_JS,
     WASM_WASM,
-    WASM_SYNTHESIZE,
-    DEFAULT_VOICE,
-    _voice_paths,
     get_voice_model,
     refresh,
+    voice_paths,
 )
 
 PIP_CMD = [sys.executable, "-m", "pip"]
@@ -69,7 +68,7 @@ DEV_PACKAGES = [
 ]
 
 
-def run(cmd, **kwargs):
+def run(cmd: List[str], **kwargs: Any) -> int:
     """Run a command, raising on failure."""
     print(f"+ {' '.join(cmd)}")
     return subprocess.check_call(cmd, **kwargs)
@@ -78,7 +77,14 @@ def run(cmd, **kwargs):
 def _pip_install_satisfied(pkg: str) -> bool:
     """Check if a single pip package is already satisfied."""
     # Strip version specifiers for pip show (e.g. "vosk>=0.3.45,<1" → "vosk")
-    name = pkg.split(">=")[0].split("<")[0].split(">")[0].split("=")[0].split("[")[0].strip()
+    name = (
+        pkg.split(">=")[0]
+        .split("<")[0]
+        .split(">")[0]
+        .split("=")[0]
+        .split("[")[0]
+        .strip()
+    )
     result = subprocess.run(
         [sys.executable, "-m", "pip", "show", name],
         capture_output=True,
@@ -99,26 +105,28 @@ def all_deps_met() -> bool:
     return True
 
 
-def _is_emcc_available() -> bool:
-    """Check if emcc (Emscripten compiler) is available on PATH."""
-    return shutil.which("emcc") is not None
-
-
 def voice_models_exist() -> bool:
     """Check that voice model files exist in external/piper_voices."""
-    onnx, json_cfg, _ = _voice_paths(get_voice_model())
+    onnx, json_cfg, _ = voice_paths(get_voice_model())
     return onnx.exists() and json_cfg.exists()
 
 
 def deterministic_config_exists() -> bool:
     """Check that the deterministic config file exists."""
-    return _DETERMINISTIC_CONFIG_PATH.exists()
+    return DETERMINISTIC_CONFIG_DIR.is_dir() and any(
+        DETERMINISTIC_CONFIG_DIR.glob("*.onnx.json")
+    )
 
 
 def deps_exist() -> bool:
     """Check if all prerequisites are already set up."""
-    return (all_deps_met() and NATIVE_BIN.exists() and VOSK_EXTERNAL_DIR.exists()
-            and voice_models_exist() and deterministic_config_exists())
+    return (
+        all_deps_met()
+        and NATIVE_BIN_DIR.exists()
+        and VOSK_MODEL_DIR.exists()
+        and voice_models_exist()
+        and deterministic_config_exists()
+    )
 
 
 def install_deps():
@@ -140,7 +148,10 @@ def install_deps():
         run(PIP_CMD + ["install"] + DEV_PACKAGES)
     except subprocess.CalledProcessError as e:
         print(f"pip install failed (rc={e.returncode}).", file=sys.stderr)
-        print("If using a system Python, you may need to use a venv or pass --break-system-packages.", file=sys.stderr)
+        print(
+            "If using a system Python, you may need to use a venv or pass --break-system-packages.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     print("Dependencies installed.")
 
@@ -148,7 +159,7 @@ def install_deps():
 def ensure_piper_installed():
     """Build the Piper Python package (prerequisite for CMake-native build)."""
     piper_src = REPO / "src"
-    if piper_src.glob("**/espeakbridge.cpython-*.so"):
+    if list(piper_src.glob("**/espeakbridge.cpython-*.so")):
         print("Piper Python module already built, skipping.")
         return
 
@@ -166,18 +177,18 @@ def build_native():
 
     ensure_piper_installed()
 
-    if NATIVE_BIN.exists():
-        print(f"Native binary already exists at {NATIVE_BIN}, skipping build.")
+    if NATIVE_BIN_DIR.exists():
+        print(f"Native binary already exists at {NATIVE_BIN_DIR}, skipping build.")
         return
 
-    if NATIVE_BUILD.exists():
-        print(f"Cleaning partial build at {NATIVE_BUILD}")
-        shutil.rmtree(NATIVE_BUILD)
-    NATIVE_BUILD.mkdir(parents=True, exist_ok=True)
+    if NATIVE_BUILD_DIR.exists():
+        print(f"Cleaning partial build at {NATIVE_BUILD_DIR}")
+        shutil.rmtree(NATIVE_BUILD_DIR)
+    NATIVE_BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
     print("Configuring CMake...")
     result = subprocess.run(
-        ["cmake", str(DIR), "-B", str(NATIVE_BUILD)],
+        ["cmake", str(DIR), "-B", str(NATIVE_BUILD_DIR)],
         capture_output=True,
         text=True,
         cwd=str(REPO),
@@ -189,7 +200,7 @@ def build_native():
 
     print("Building...")
     result = subprocess.run(
-        ["cmake", "--build", str(NATIVE_BUILD), "-j"],
+        ["cmake", "--build", str(NATIVE_BUILD_DIR), "-j"],
         capture_output=True,
         text=True,
         cwd=str(REPO),
@@ -199,38 +210,38 @@ def build_native():
         print(result.stderr, file=sys.stderr)
         sys.exit(1)
 
-    if not NATIVE_BIN.exists():
-        print(f"Error: binary not found at {NATIVE_BIN}", file=sys.stderr)
+    if not NATIVE_BIN_DIR.exists():
+        print(f"Error: binary not found at {NATIVE_BIN_DIR}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"Native binary built: {NATIVE_BIN}")
+    print(f"Native binary built: {NATIVE_BIN_DIR}")
 
 
-def download_model():
+def download_vosk_model():
     """Download the Vosk English speech recognition model to external/."""
     print("=== Downloading Vosk model ===")
 
-    if VOSK_EXTERNAL_DIR.exists() and any(VOSK_EXTERNAL_DIR.rglob("*")):
-        print(f"Model already exists at {VOSK_EXTERNAL_DIR}, skipping download.")
+    if VOSK_MODEL_DIR.exists() and any(VOSK_MODEL_DIR.rglob("*")):
+        print(f"Model already exists at {VOSK_MODEL_DIR}, skipping download.")
         return
 
     EXTERNAL_DIR.mkdir(parents=True, exist_ok=True)
 
-    if not VOSK_MODEL_ZIP.exists():
+    if not VOSK_MODEL_ZIP_DIR.exists():
         print(f"Downloading {VOSK_MODEL_URL} ...")
-        print("This is ~1.8GB and may take several minutes.")
-        urllib.request.urlretrieve(VOSK_MODEL_URL, VOSK_MODEL_ZIP)
+        print("This is ~100MB.")
+        urllib.request.urlretrieve(VOSK_MODEL_URL, VOSK_MODEL_ZIP_DIR)
         print("Download complete.")
-        print(f"Extracting {VOSK_MODEL_ZIP} ...")
-        with zipfile.ZipFile(VOSK_MODEL_ZIP, "r") as zf:
-            zf.extractall(str(VOSK_MODEL_ZIP.parent))
+        print(f"Extracting {VOSK_MODEL_ZIP_DIR} ...")
+        with zipfile.ZipFile(VOSK_MODEL_ZIP_DIR, "r") as zf:
+            zf.extractall(str(VOSK_MODEL_ZIP_DIR.parent))
         print("Extraction complete.")
     else:
-        print(f"Zip already exists at {VOSK_MODEL_ZIP}, extracting...")
-        with zipfile.ZipFile(VOSK_MODEL_ZIP, "r") as zf:
-            zf.extractall(str(VOSK_MODEL_ZIP.parent))
+        print(f"Zip already exists at {VOSK_MODEL_ZIP_DIR}, extracting...")
+        with zipfile.ZipFile(VOSK_MODEL_ZIP_DIR, "r") as zf:
+            zf.extractall(str(VOSK_MODEL_ZIP_DIR.parent))
 
-    print(f"Model available at: {VOSK_EXTERNAL_DIR}")
+    print(f"Model available at: {VOSK_MODEL_DIR}")
 
 
 def download_voices():
@@ -251,8 +262,10 @@ def download_voices():
 def copy_deterministic_config():
     """Generate deterministic config (noise_scale=0, noise_w=0) from the voice model."""
     print("=== Setting up deterministic config ===")
-    if _DETERMINISTIC_CONFIG_PATH.exists():
-        print(f"Deterministic config already exists, skipping.")
+    if DETERMINISTIC_CONFIG_DIR.is_dir() and any(
+        DETERMINISTIC_CONFIG_DIR.glob("*.onnx.json")
+    ):
+        print("Deterministic config already exists, skipping.")
         return
 
     import json
@@ -268,11 +281,12 @@ def copy_deterministic_config():
     cfg["inference"]["noise_scale"] = 0.0
     cfg["inference"]["noise_w"] = 0.0
 
+    dest = DETERMINISTIC_CONFIG_DIR / f"{voice}-deterministic.onnx.json"
     DETERMINISTIC_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(_DETERMINISTIC_CONFIG_PATH, "w") as f:
+    with open(dest, "w") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=True)
         f.write("\n")
-    print(f"Created {_DETERMINISTIC_CONFIG_PATH}")
+    print(f"Created {dest}")
 
 
 def build_wasm():
@@ -280,14 +294,15 @@ def build_wasm():
     print("=== Building WASM piper binary ===")
 
     if WASM_JS.exists() and WASM_WASM.exists():
-        print(f"WASM build already exists, skipping.")
+        print("WASM build already exists, skipping.")
         return
 
     build_script = REPO / "wasm_piper" / "build.py"
     print("Running wasm_piper/build.py (this may take a while)...")
     result = subprocess.run(
         [sys.executable, str(build_script)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
         cwd=str(REPO),
     )
     if result.returncode != 0:
@@ -299,23 +314,25 @@ def build_wasm():
     if WASM_JS.exists() and WASM_WASM.exists():
         print(f"WASM build complete: {WASM_JS}, {WASM_WASM}")
     else:
-        print("Warning: build reported success but artifacts not found.", file=sys.stderr)
+        print(
+            "Warning: build reported success but artifacts not found.", file=sys.stderr
+        )
 
 
 def clean():
     """Remove build artifacts."""
     print("=== Cleaning build artifacts ===")
-    for d in [NATIVE_BUILD, REPO / "build"]:
+    for d in [NATIVE_BUILD_DIR, REPO / "build"]:
         if d.exists():
             print(f"Removing {d}")
             shutil.rmtree(d)
     # Clean deterministic config
-    if _DETERMINISTIC_CONFIG_PATH.exists():
-        if _DETERMINISTIC_CONFIG_PATH.is_symlink():
-            _DETERMINISTIC_CONFIG_PATH.unlink()
-        elif _DETERMINISTIC_CONFIG_PATH.is_dir():
-            shutil.rmtree(_DETERMINISTIC_CONFIG_PATH)
-        print(f"Removing {_DETERMINISTIC_CONFIG_PATH}")
+    if DETERMINISTIC_CONFIG_DIR.exists():
+        if DETERMINISTIC_CONFIG_DIR.is_symlink():
+            DETERMINISTIC_CONFIG_DIR.unlink()
+        elif DETERMINISTIC_CONFIG_DIR.is_dir():
+            shutil.rmtree(DETERMINISTIC_CONFIG_DIR)
+        print(f"Removing {DETERMINISTIC_CONFIG_DIR}")
     print("Clean complete.")
 
 
@@ -340,9 +357,14 @@ def main():
         nargs="?",
         default="all",
         choices=[
-            "all", "deps", "build-native", "download-model",
-            "download-voices", "deterministic-config",
-            "build-wasm", "clean",
+            "all",
+            "deps",
+            "build-native",
+            "download-vosk-model",
+            "download-voices",
+            "deterministic-config",
+            "build-wasm",
+            "clean",
         ],
         help="Which step to run (default: all)",
     )
@@ -350,6 +372,7 @@ def main():
 
     if args.list_voices:
         from piper.download_voices import list_voices
+
         list_voices()
         return
 
@@ -361,11 +384,17 @@ def main():
         return
 
     step_map = {
-        "all": ["deps", "build-native", "download-voices",
-                "deterministic-config", "download-model", "build-wasm"],
+        "all": [
+            "deps",
+            "build-native",
+            "download-voices",
+            "deterministic-config",
+            "download-vosk-model",
+            "build-wasm",
+        ],
         "deps": ["deps"],
         "build-native": ["build-native"],
-        "download-model": ["download-model"],
+        "download-vosk-model": ["download-vosk-model"],
         "download-voices": ["download-voices"],
         "deterministic-config": ["deterministic-config"],
         "build-wasm": ["build-wasm"],
@@ -377,8 +406,8 @@ def main():
             install_deps()
         elif step == "build-native":
             build_native()
-        elif step == "download-model":
-            download_model()
+        elif step == "download-vosk-model":
+            download_vosk_model()
         elif step == "download-voices":
             download_voices()
         elif step == "deterministic-config":
