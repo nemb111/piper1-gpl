@@ -1,6 +1,23 @@
+[project]
+name = "piper"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+]
+
 [build-system]
 requires = ["scikit-build", "setuptools", "wheel", "cmake", "ninja"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "hatch>=1.16.5",
+    "isort>=8.0.1",
+    "mypy>=2.1.0",
+    "pyright>=1.1.409",
+    "ruff>=0.15.13",
+]
 
 [tool.black]
 exclude = '''
@@ -8,3 +25,65 @@ exclude = '''
     \.pyi$
 )
 '''
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+files = [
+  "src/piper",
+  "tests",
+  "wasm_piper"
+]
+
+exclude = '''
+(?x)(
+    ^build/|
+    __pycache__/|
+    \.egg-info/|
+    _skbuild/|
+    ^wasm_piper/node_modules/|
+    tests_old/
+)
+'''
+
+mypy_path = [
+  "src",
+  "/home/claude/.local/lib/python3.12/site-packages",
+  "/usr/lib/python3.12/dist-packages"
+]
+
+# Lint environment - runs divergence test verification
+[tool.hatch.envs.lint]
+detached = true
+dependency-groups = ["dev"]
+
+[tool.hatch.envs.lint.scripts]
+mypy = "python -m mypy tests/divergence_tests/config.py tests/divergence_tests/setup.py tests/divergence_tests/test_divergence.py tests/divergence_tests/conftest.py --ignore-missing-imports"
+pyright = "python -m pyright tests/divergence_tests/"
+ruff = "sh -c 'ruff check tests/divergence_tests/'"
+all = "python -m mypy tests/divergence_tests/config.py tests/divergence_tests/setup.py tests/divergence_tests/test_divergence.py tests/divergence_tests/conftest.py --ignore-missing-imports && python -m pyright tests/divergence_tests/ && ruff check tests/divergence_tests/"
+
+# Divergence test environment - cross-variant audio similarity (Python vs native vs WASM)
+[tool.hatch.envs.divergence]
+dependencies = [
+  "piper-tts",
+  "scikit-build<1",
+  "vosk>=0.3.45,<1",
+  "soundfile>=0.12,<1",
+  "librosa>=0.10,<1",
+  "pytest>=8",
+]
+post-install-commands = ["python tests/divergence_tests/setup.py all"]
+
+[tool.hatch.envs.divergence.scripts]
+test = "pytest tests/divergence_tests/ -v {args}"
+all = "pytest tests/divergence_tests/ -v"
+
+# Clean environment - clean build artifacts and hatch caches
+[tool.hatch.envs.clean]
+detached = true
+
+[tool.hatch.envs.clean.scripts]
+git-clean = "sh -c 'git clean -ffdx -e .env -e .venv'"
+git-clean-force = "git clean -ffdx"

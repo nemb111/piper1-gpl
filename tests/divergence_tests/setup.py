@@ -40,8 +40,7 @@ from config import (
     VOSK_MODEL_ZIP_DIR,
     WASM_JS,
     WASM_WASM,
-    get_voice_model,
-    refresh,
+    config_instance,
     voice_paths,
 )
 
@@ -107,7 +106,7 @@ def all_deps_met() -> bool:
 
 def voice_models_exist() -> bool:
     """Check that voice model files exist in external/piper_voices."""
-    onnx, json_cfg, _ = voice_paths(get_voice_model())
+    onnx, json_cfg, _ = voice_paths(config_instance.voice)
     return onnx.exists() and json_cfg.exists()
 
 
@@ -255,7 +254,7 @@ def download_voices():
 
     from piper.download_voices import download_voice
 
-    download_voice(get_voice_model(), PIPER_VOICES_DIR)
+    download_voice(config_instance.voice, PIPER_VOICES_DIR)
     print(f"Voice models available at: {PIPER_VOICES_DIR}")
 
 
@@ -270,7 +269,7 @@ def copy_deterministic_config():
 
     import json
 
-    voice = get_voice_model()
+    voice = config_instance.voice
     source = PIPER_VOICES_DIR / f"{voice}.onnx.json"
     if not source.exists():
         print(f"WARNING: source config not found at {source}, skipping.")
@@ -376,7 +375,7 @@ def main():
         list_voices()
         return
 
-    refresh(args.voice)
+    config_instance.voice = args.voice
 
     # When running all steps, exit early if everything is already set up
     if args.command == "all" and deps_exist():

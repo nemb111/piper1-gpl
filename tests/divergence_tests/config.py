@@ -5,6 +5,7 @@ Call refresh(voice) after changing the voice to recompute voice-dependent paths.
 """
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -120,10 +121,9 @@ ESPEAK_DATA_DIR = str(REPO / "src" / "piper" / "espeak-ng-data")
 
 # Default voice used when no --voice flag is passed to setup.py / tests.
 DEFAULT_VOICE = "en_US-lessac-medium"
-_voice_model = DEFAULT_VOICE
 
 
-def voice_paths(voice: str):
+def voice_paths(voice: str) -> tuple[Path, Path, Path]:
     """Return (model_path, config_path, deterministic_config_path) for voice.
 
     Args:
@@ -143,25 +143,68 @@ def voice_paths(voice: str):
     return onnx, json_cfg, det_cfg
 
 
-# Eagerly compute paths for the default voice so that config.py is usable
-# immediately after import without needing to call refresh().
-_MODEL_PATH, _CONFIG_PATH, _DETERMINISTIC_CONFIG_PATH = voice_paths(_voice_model)
+@dataclass
+class Config:
+    """Mutable voice selection state encapsulated in a single object."""
+
+    voice: str = DEFAULT_VOICE
+
+    @property
+    def model_path(self) -> Path:
+        return voice_paths(self.voice)[0]
+
+    @property
+    def config_path(self) -> Path:
+        return voice_paths(self.voice)[1]
+
+    @property
+    def deterministic_config_path(self) -> Path:
+        return voice_paths(self.voice)[2]
+
+    @property
+    def wave_dir(self) -> Path:
+        return WAV_DIR
+
+    @property
+    def native_bin_dir(self) -> Path:
+        return NATIVE_BIN_DIR
+
+    @property
+    def wasm_js(self) -> Path:
+        return WASM_JS
+
+    @property
+    def wasm_wasm(self) -> Path:
+        return WASM_WASM
+
+    @property
+    def wasm_synthesize(self) -> Path:
+        return WASM_SYNTHESIZE
+
+    @property
+    def repo(self) -> Path:
+        return REPO
+
+    @property
+    def espeak_data_dir(self) -> str:
+        return ESPEAK_DATA_DIR
 
 
-def refresh(voice: str):
+config_instance: Config = Config()
+
+
+def refresh(voice: str) -> None:
     """Recompute voice-dependent paths. Call after voice override.
 
     When the user selects a different voice via --voice, this function updates
-    the module-level _MODEL_PATH, _CONFIG_PATH, and _DETERMINISTIC_CONFIG_PATH
-    variables so that downstream code (setup.py, test_divergence.py) picks up
-    the new voice without needing to restart the interpreter.
+    the active voice on config_instance so that downstream code (setup.py,
+    test_divergence.py) picks up the new voice without needing to restart
+    the interpreter.
 
     Args:
         voice: New voice identifier (e.g. "en_US-amy-low").
     """
-    global _voice_model, _MODEL_PATH, _CONFIG_PATH, _DETERMINISTIC_CONFIG_PATH
-    _voice_model = voice
-    _MODEL_PATH, _CONFIG_PATH, _DETERMINISTIC_CONFIG_PATH = voice_paths(voice)
+    config_instance.voice = voice
 
 
 def get_voice_model() -> str:
@@ -170,4 +213,4 @@ def get_voice_model() -> str:
     Returns:
         The string identifier of the currently-selected voice (e.g. "en_US-lessac-medium").
     """
-    return _voice_model
+    return config_instance.voice

@@ -30,7 +30,7 @@ Note: `uv` is available as a fast Python package manager (use `uv pip install` i
 | WASM | `wasm_piper/` | WebAssembly build of libpiper for browser use |
 
 ### Build System
-
+- **Available Python**: Python MUST be run via `uv` package manager. To enforce this, system python was uninstalled.
 - **Python + C extension**: `setup.py` uses scikit-build to call CMake. The CMake build compiles espeak-ng from source and links it into `espeakbridge.c` (Python stable ABI module).
 - **Development install**: `script/setup --dev` then `script/dev_build` (or `python3 setup.py build_ext --inplace`)
 - **CMake modules are split by platform**: `cmake/native/` (native: `espeak_ng_external.cmake`, `onnxruntime_external.cmake`, `options.cmake`), `cmake/emscripten/` (WASM: `espeak_ng_external.cmake`, `find_emscripten.cmake`, `find_npm.cmake`, `find_onnxruntime_web.cmake`, `options.cmake`, `toolchain.cmake`). Options like `ONNXRUNTIME_VERSION` and `PIPER_ESPEAKNG_UPDATE_DISCONNECTED` default in `cmake/native/options.cmake`; `EMSCRIPTEN_VERSION` defaults in `cmake/emscripten/options.cmake` (auto-included by `find_emscripten.cmake`).
@@ -67,6 +67,34 @@ Note: `uv` is available as a fast Python package manager (use `uv pip install` i
 
 ### Running and Testing
 
+**Primary workflow (Hatch):** After every code change, from a **clean repo state**, run:
+
+```sh
+# Clean repo state (removes all untracked files, preserves .env/.venv)
+hatch run clean:git-clean-force
+
+# Run all verification checks (mypy + pyright + ruff on divergence tests)
+hatch run lint:all
+
+# Run divergence tests (setup auto-runs via post-install hook)
+hatch run divergence:test
+```
+
+Both `hatch run lint:all` and `hatch run divergence:test` must pass after every code change. Hatch handles dependency installation via uv and setup auto-runs.
+
+**Hatch reference:**
+```sh
+hatch env show                              # list environments and scripts
+hatch run lint:mypy                         # mypy check on divergence test files
+hatch run lint:pyright                      # pyright check on divergence tests
+hatch run lint:ruff                         # ruff check on divergence tests
+hatch run lint:all                          # run all three lint checks
+hatch run divergence:test                   # run all 123 divergence tests
+hatch run divergence:test -v -k "keyword"   # run subset by keyword
+```
+
+**Manual commands (when not using Hatch):**
+
 ```sh
 # Setup dev environment
 script/setup --dev
@@ -94,17 +122,10 @@ pytest tests/
 
 # Synthesize audio (onnxruntime-web, WASM in Node)
 node wasm_piper/synthesize.js model.onnx model.onnx.json "text" output.wav
-
-# Divergence validation: run setup once, then compare Python vs native vs WASM output
-python3 tests/divergence_tests/setup.py all && pytest tests/divergence_tests/test_divergence.py -v
-# Quick subset: only Python vs native comparison
-pytest tests/divergence_tests/test_divergence.py -v -k "test_python_vs_native"
-# Negative test: verify metric can distinguish different text
-pytest tests/divergence_tests/test_divergence.py -v -k "test_different_texts_not_similar"
 ```
 
-**Acceptance criteria for WASM code changes:** Always run `python3 tests/divergence_tests/setup.py all` before running divergence tests — WASM builds (ort_shim, CMakeLists.txt, shim/src/) require the full divergence suite (Python vs native vs WASM) to validate correctness.
-**Acceptance criteria for divergence_tests changes:** `uv run mypy tests/divergence_tests/config.py tests/divergence_tests/setup.py tests/divergence_tests/test_divergence.py --ignore-missing-imports` must return clean (no issues).
+**Acceptance criteria for WASM code changes:** Run from a clean state (`hatch run clean:git-clean-force`) then `hatch run lint:all` and `hatch run divergence:test`. WASM builds (ort_shim, CMakeLists.txt, shim/src/) require the full divergence suite (Python vs native vs WASM) to validate correctness.
+**Acceptance criteria for divergence_tests changes:** Run from a clean state (`hatch run clean:git-clean-force`) then `hatch run lint:all` and `hatch run divergence:test`. Both must pass cleanly.
 
 **openl3 install caveat (Python 3.12):** openl3 0.4.2 uses the removed `imp` module. Before `pip install "piper-tts[divergence]"`, patch `import imp` → `import importlib.util` + `imp.load_source()` → `importlib.util` in `openl3/setup.py`. Install with `--no-deps` to avoid dependency conflicts.
 
@@ -113,7 +134,7 @@ The test suite (`tests/`) includes:
 - `test_espeak_phonemizer.py` - espeak-ng phonemization
 - `test_tashkeel.py` - Arabic diacritization
 - `test_chinese_phonemizer.py` - g2pW Chinese phonemizer (excluded from default pytest run)
-- `test_divergence.py` - Cross-variant audio similarity (Python vs native vs WASM). Compares pairwise by transcribing back to text using Vosk speech recognition and computing SequenceMatcher word-list ratio. Simulates synthesis via native C++ binary (`tests/divergence_tests/build/native_divergence_test`) and WASM (`wasm_piper/synthesize.js`). Includes negative tests (`test_different_texts_not_similar`) to verify metric can distinguish dissimilar audio. **63 tests total**: 20 quotes × 3 pairwise comparisons + 3 negative tests. Prerequisites: `python3 tests/divergence_tests/setup.py all` (installs deps, builds native binary, downloads voice models from `external/piper_voices/`, deterministic config, Vosk model). Deterministic config files live in `tests/divergence_tests/generated/` (not `data/`). When modifying the config copy in `setup.py`, use `ensure_ascii=True` in `json.dump` to preserve `\uXXXX` escape sequences matching the source voice model's encoding.
+- `test_divergence.py` - Cross-variant audio similarity (Python vs native vs WASM). Tests: `test_variant_transcription_matches_text` (verifies each variant transcribes back to source text), `test_overall_similarity_avg` (verifies audio similarity across variants >= 0.95), `test_different_texts_not_similar` (negative test). **123 tests total**: 40 quotes × 3 variants × 2 test types + 3 negative tests (python/native/wasm). Prerequisites: `python3 tests/divergence_tests/setup.py all` (installs deps, builds native binary `tests/divergence_tests/build/native_divergence_test`, downloads voice models from `external/piper_voices/`, deterministic config, Vosk model, builds WASM via `wasm_piper/synthesize.js`). Deterministic config files live in `tests/divergence_tests/generated/` (not `data/`). When modifying the config copy in `setup.py`, use `ensure_ascii=True` in `json.dump` to preserve `\uXXXX` escape sequences matching the source voice model's encoding.
 - `wasm_piper/tests/` - WASM integration tests (JS runner + C++ main). `wasm_piper/tests_old/` — stale mock ONNX/espeak-ng test files (mock_onnxruntime.cpp, mock_espeak_ng.cpp).
 
 ### Training
@@ -150,3 +171,18 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - **EM_ASYNC_JS parameter limit**: 8th+ parameters silently drop. Use separate EM_JS getters (e.g. `ort_shim_get_audio_ptr`) for output values. State written inside EM_ASYNC_JS is accessible from EM_JS immediately after return.
 - **ort_shim internal orchestration**: Synthesis scripts (synthesize.js) must ONLY use the piper C API (`piper_create`, `piper_synthesize_start`, `piper_synthesize_next`, `piper_free`). All ONNX Runtime setup, input batching, inference triggering, and audio copying are internal to ort_shim.js. `ortShimModule` is never called directly from synthesis scripts.
 - **Value for heap pointers**: When returning audio from `Session::Run()`, set `Value.data_ = (void*)audioPtrC` (heap pointer from ort_shim). `Value::GetTensorData()` must check `ort_shim_get_audio_ptr()` and return the heap pointer.
+
+### Hatch Configuration
+
+Hatch 1.16.5+ is used for running verification scripts. Key gotchas:
+- **Use `scripts`, not `tasks`** — `[tool.hatch.envs.<env>.tasks]` is silently ignored; `[tool.hatch.envs.<env>.scripts]` is correct.
+- **Use `installer = "uv"`** — tells hatch to use uv (not pip) for dependency installation.
+- **Use `detached = true`** for standalone environments (skips project install); preferred over `skip-install = true`.
+- **Script expansion pitfall** — hatch treats the first word of every script command as a potential script name reference. If it matches a script name (e.g., `mypy = "mypy ..."`), it causes a circular expansion error. Workarounds: prefix with `python -m` (e.g., `python -m mypy`) or wrap in `sh -c` (e.g., `sh -c 'ruff check ...'`). The `all` script must also start with a non-script name.
+- **Reuse dependency groups** — `dependency-groups = ["dev"]` in a hatch env shares the project's `[dependency-groups]` from `pyproject.toml`.
+- **Post-install scripts** — `[tool.hatch.envs.<env>.post-install]` with `commands = [...]` runs after environment creation.
+- Environments are cached in `~/.local/share/hatch/env/virtual/<project>/<hash>/<env_name>`; clear with `rm -rf ~/.local/share/hatch/env/virtual/<project>/*`.
+
+### CLAUDE.local.md (Local Only)
+
+A `CLAUDE.local.md` file (gitignored, not committed) can be used for session-specific learnings before consolidating into the main CLAUDE.md. To add it: create `./CLAUDE.local.md` and add it to `.gitignore`. Use the `#` key shortcut during a Claude session to auto-incorporate learnings into CLAUDE.md.
