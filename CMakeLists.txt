@@ -9,6 +9,10 @@ include(ExternalProject)
 # scikit-build-core will forward Python_* variables
 find_package(Python COMPONENTS Development.Module Development.SABIModule REQUIRED)
 
+
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/native/espeak_ng_external.cmake)
+configure_espeak_ng_external()
+
 # Install location for espeak-ng
 set(ESPEAKNG_BUILD_DIR ${CMAKE_BINARY_DIR}/espeak_ng)
 set(ESPEAKNG_INSTALL_DIR ${CMAKE_BINARY_DIR}/espeak_ng-install)
@@ -21,31 +25,6 @@ else()
     set(ESPEAKNG_STATIC_LIB ${ESPEAKNG_INSTALL_DIR}/lib/libespeak-ng.a)
     set(UCD_STATIC_LIB ${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external-build/src/ucd-tools/libucd.a)
 endif()
-
-ExternalProject_Add(espeak_ng_external
-    GIT_REPOSITORY https://github.com/espeak-ng/espeak-ng.git
-    GIT_TAG 724808c  # 2026-Apr-06
-    PREFIX ${ESPEAKNG_BUILD_DIR}
-    CMAKE_ARGS
-        -DCMAKE_INSTALL_PREFIX=${ESPEAKNG_INSTALL_DIR}
-        -DBUILD_SHARED_LIBS:BOOL=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-        -DUSE_ASYNC:BOOL=OFF
-        -DUSE_MBROLA:BOOL=OFF
-        -DUSE_LIBSONIC:BOOL=OFF
-        -DUSE_LIBPCAUDIO:BOOL=OFF
-        -DUSE_KLATT:BOOL=OFF
-        -DUSE_SPEECHPLAYER:BOOL=OFF
-        -DEXTRA_cmn:BOOL=ON
-        -DEXTRA_ru:BOOL=ON
-        # Need to explicitly add ucd include directory for CI
-        "-DCMAKE_C_FLAGS=-D_FILE_OFFSET_BITS=64 -I${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external/src/ucd-tools/src/include"
-        "-DCMAKE_CXX_FLAGS=-D_FILE_OFFSET_BITS=64 -I${ESPEAKNG_BUILD_DIR}/src/espeak_ng_external/src/ucd-tools/src/include"
-    BUILD_BYPRODUCTS
-        ${ESPEAKNG_STATIC_LIB}
-        ${UCD_STATIC_LIB}
-    UPDATE_DISCONNECTED TRUE
-)
 
 include_directories(
     ${ESPEAKNG_INSTALL_DIR}/include

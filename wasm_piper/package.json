@@ -1,0 +1,10 @@
+{
+  "name": "piper-wasm",
+  "version": "1.0.0",
+  "dependencies": {
+    "onnxruntime-web": "^1.24.0"
+  },
+  "scripts": {
+    "build": "node build.js"
+  }
+}
