@@ -16,7 +16,7 @@ SynthesizeFunc = Callable[[str, Path], "AudioResult"]
 
 
 class AudioResult(NamedTuple):
-    wav_path: Path
+    wav_path: Path | None
     audio: object | None = None
     sample_rate: int = 0
 
@@ -60,12 +60,15 @@ def synthesize_native(
 
 
 def synthesize_wasm(text: str, wav_path: Path, config: Any) -> AudioResult:
-    """Synthesize text using WASM build, write 32-bit float WAV."""
-    import pytest
+    """Synthesize text using WASM build, write 32-bit float WAV.
+
+    Returns None (AudioResult with wav_path=None) if WASM build is missing,
+    allowing individual tests to skip rather than skipping all tests.
+    """
+    import subprocess
 
     if not Path(config.wasm_js).exists() or not Path(config.wasm_wasm).exists():
-        pytest.skip("WASM build not found at wasm_piper/build/")
-    import subprocess
+        return AudioResult(wav_path=None, audio=None, sample_rate=0)
 
     result = subprocess.run(
         ["node", str(config.wasm_synthesize), str(config.model_path),
@@ -76,7 +79,7 @@ def synthesize_wasm(text: str, wav_path: Path, config: Any) -> AudioResult:
     )
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
-        pytest.fail(f"WASM synthesis failed (rc={result.returncode}): {stderr}")
+        raise RuntimeError(f"WASM synthesis failed (rc={result.returncode}): {stderr}")
     return AudioResult(wav_path, None, 0)
 
 

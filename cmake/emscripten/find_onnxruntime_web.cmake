@@ -9,27 +9,23 @@
 # external/onnxruntime/include/         (headers)
 
 get_filename_component(_repo_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(_LIB_FILE "${_repo_root}/external/onnxruntime/libonnxruntime_webassembly.a")
-set(_HEADER_DIR "${_repo_root}/external/onnxruntime/include")
+set(_lib_file "${_repo_root}/external/onnxruntime/libonnxruntime_webassembly.a")
+set(_header_dir "${_repo_root}/external/onnxruntime/include")
 
 # ── User-provided library path ──
 if(ONNXRUNTIME_WEB_LIB_PATH)
   if(EXISTS "${ONNXRUNTIME_WEB_LIB_PATH}")
-    set(_LIB_FILE
-        "${ONNXRUNTIME_WEB_LIB_PATH}"
-        CACHE FILEPATH "" FORCE)
+    set(_lib_file "${ONNXRUNTIME_WEB_LIB_PATH}")
     # Use default header directory (can be overridden if needed)
-    if(NOT DEFINED _HEADER_DIR)
-      get_filename_component(_lib_dir "${_LIB_FILE}" DIRECTORY ABSOLUTE)
-      set(_HEADER_DIR
-          "${_lib_dir}/../include"
-          CACHE PATH "" FORCE)
+    if(NOT DEFINED _header_dir)
+      get_filename_component(_lib_dir "${_lib_file}" DIRECTORY ABSOLUTE)
+      set(_header_dir "${_lib_dir}/../include")
     endif()
-    message(STATUS "ONNX Runtime Web: found user-provided library ${_LIB_FILE}")
+    message(STATUS "ONNX Runtime Web: found user-provided library ${_lib_file}")
     add_library(onnxruntime_web_iface_lib INTERFACE)
     target_include_directories(onnxruntime_web_iface_lib
-                               INTERFACE "${_HEADER_DIR}")
-    target_link_libraries(onnxruntime_web_iface_lib INTERFACE "${_LIB_FILE}")
+                               INTERFACE "${_header_dir}")
+    target_link_libraries(onnxruntime_web_iface_lib INTERFACE "${_lib_file}")
     return()
   else()
     message(
@@ -94,10 +90,10 @@ if(TARGET onnxruntime_web_iface_lib)
   return()
 endif()
 
-if(NOT EXISTS "${_LIB_FILE}")
+if(NOT EXISTS "${_lib_file}")
   message(
     WARNING
-      "ONNX Runtime WASM static library not found: ${_LIB_FILE}\n"
+      "ONNX Runtime WASM static library not found: ${_lib_file}\n"
       "Build it by running:\n"
       "    python3 script/build_onnxruntime_web.py --extra-args --parallel 4\n"
       "This downloads ~2 GB and takes 30-60 minutes.\n"
@@ -114,8 +110,8 @@ if(NOT EXISTS "${_LIB_FILE}")
 endif()
 
 add_library(onnxruntime_web_iface_lib INTERFACE)
-target_include_directories(onnxruntime_web_iface_lib INTERFACE ${_HEADER_DIR})
-target_link_libraries(onnxruntime_web_iface_lib INTERFACE "${_LIB_FILE}")
+target_include_directories(onnxruntime_web_iface_lib INTERFACE ${_header_dir})
+target_link_libraries(onnxruntime_web_iface_lib INTERFACE "${_lib_file}")
 
-message(STATUS "ONNX Runtime Web: found ${_LIB_FILE}")
-message(STATUS "  Headers: ${_HEADER_DIR}")
+message(STATUS "ONNX Runtime Web: found ${_lib_file}")
+message(STATUS "  Headers: ${_header_dir}")

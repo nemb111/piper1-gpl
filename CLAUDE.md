@@ -51,6 +51,7 @@ Note: `uv` is available as a fast Python package manager (use `uv pip install` i
 
 ### CMake ExternalProject Gotchas
 
+- **cmake-lint E1126:** `file(ARCHIVE_EXTRACT ...)` is valid CMake but cmake-lint parser rejects it — use `# cmake-lint: disable=E1126` inline suppression.
 - `if()/endif()` blocks do NOT work inside `ExternalProject_Add()` — use variable substitution.
 - `@`-prefixed CMake variable expansion does NOT work for `PATCH_COMMAND` — use a shell script that no-ops on empty args.
 - `CMAKE_CURRENT_SOURCE_DIR` resolves inside the ExternalProject context, not the caller. Use `get_filename_component(_root "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)` to reach the repo root.
@@ -72,11 +73,12 @@ Note: `uv` is available as a fast Python package manager (use `uv pip install` i
 ```sh
 # Clean repo state (removes all untracked files, preserves .env/.venv)
 hatch run clean:git-clean-force
+# NOTE: This deletes external/ (Vosk model, voice models). The divergence test script re-runs setup automatically.
 
 # Run all verification checks (mypy + pyright + ruff on divergence tests)
 hatch run lint:all
 
-# Run divergence tests (setup auto-runs via post-install hook)
+# Run divergence tests (re-runs setup before each test run)
 hatch run divergence:test
 ```
 
@@ -151,8 +153,7 @@ Training code is in `src/piper/train/`. Requires `torch` and `lightning` (`scrip
 - **Memory debugging**: Use `VmRSS` from `/proc/{pid}/status` to measure Python RSS at each step — most reliable way to diagnose memory leaks/accumulation.
 - **Low-RAM setups**: For machines with <16GB RAM, consider `vosk-model-small-en-us-0.15` (~100MB disk, ~500MB RAM). Same transcription quality for divergence testing.
 - **Memory optimization in `test_divergence.py`**: Audio is lazy-loaded from disk (not cached as numpy arrays); Piper model is freed after synthesis phase. These two changes alone reduced peak memory from 5-6GB to ~3GB.
-
-## Architecture Notes
+- **`setup.py all` uses bare `pip install`** (not uv). Outside a hatch env it requires `--break-system-packages`.
 
 - **Phonemization flow**: Text -> (Tashkeel for Arabic) -> espeak-ng/g2pW/text -> phoneme list -> phoneme IDs -> ONNX inference -> audio
 - **PiperConfig** lives in a JSON sidecar file (e.g., `voice.onnx.json`). It's loaded when constructing `PiperVoice`.

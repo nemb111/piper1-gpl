@@ -33,7 +33,7 @@ const WASM_WASM = path.join(BASE_DIR, 'build', 'piper_wasm.wasm');
 // WASM FS paths (files preloaded via --preload-file in CMakeLists.txt)
 const DEFAULT_MODEL_WASM   = '/piper_voices/en_US-lessac-medium.onnx';
 const DEFAULT_CONFIG_WASM  = '/piper_voices/en_US-lessac-medium.onnx.json';
-const DEFAULT_ESPEAK       = '/espeak_ng_cross/share/espeak-ng-data';
+const DEFAULT_ESPEAK       = '/share/espeak-ng-data';
 
 // Temp directory for host-accessible copies of preloaded WASM FS files.
 let TEMP_DIR;

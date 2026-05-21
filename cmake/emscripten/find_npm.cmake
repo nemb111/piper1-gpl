@@ -3,7 +3,7 @@
 # system npm version.
 #
 # Usage: include(find_npm.cmake) # Optional: set NODE_VERSION "22.16.0" before
-# calling CONFIGURE_NPM_EXTERNAL() # Result: NPM_BIN and NPM_DIR are set
+# calling configure_npm_external() # Result: NPM_BIN and NPM_DIR are set
 
 if(TARGET npm_iface_lib)
   return()
@@ -48,10 +48,10 @@ elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
   set(_node_platform "win-x64")
 else()
   message(
-    WARNING
-      "Unsupported platform ${CMAKE_HOST_SYSTEM_NAME} ${_host_arch} for node download — falling back to system node/npm.\n"
-      "If system node/npm is also unavailable, run build.py first.\n"
-      "Note: For automated setup, run: python3 build.py")
+    WARNING "Unsupported platform ${CMAKE_HOST_SYSTEM_NAME} ${_host_arch} "
+            "for node download - falling back to system node/npm.\n"
+            "If system node/npm is also unavailable, run build.py first.\n"
+            "Note: For automated setup, run: python3 build.py")
   set(_node_platform "")
 endif()
 
@@ -114,7 +114,7 @@ function(_node_download_and_extract node_dir tarball_path url hashes)
 endfunction()
 
 # ── Main function: ensure node/npm is available ──
-function(CONFIGURE_NPM_EXTERNAL)
+function(configure_npm_external)
   # ── User-provided NPM_DIR ──
   if(NPM_DIR)
     if(EXISTS "${NPM_DIR}/npm")
@@ -143,14 +143,14 @@ function(CONFIGURE_NPM_EXTERNAL)
     endif()
   endif()
 
-  set(_bin_dir
+  set(BIN_DIR
       "${NODE_DOWNLOAD_DIR}/bin"
       CACHE PATH "Node.js binary directory")
   set(NPM_BIN
-      "${_bin_dir}/npm"
+      "${BIN_DIR}/npm"
       CACHE FILEPATH "Path to npm binary" FORCE)
   set(NODE_BIN
-      "${_bin_dir}/node"
+      "${BIN_DIR}/node"
       CACHE FILEPATH "Path to node binary" FORCE)
 
   if(EXISTS "${NODE_BIN}")
@@ -182,9 +182,9 @@ function(CONFIGURE_NPM_EXTERNAL)
 
   get_filename_component(_cache_dir "${CMAKE_BINARY_DIR}/external/node"
                          ABSOLUTE)
-  set(_tarball_path "${_cache_dir}/${_node_tarball}")
+  set(tarball_path "${_cache_dir}/${_node_tarball}")
 
-  _node_download_and_extract("${NODE_DOWNLOAD_DIR}" "${_tarball_path}"
+  _node_download_and_extract("${NODE_DOWNLOAD_DIR}" "${tarball_path}"
                              "${_node_url}" "${_node_hashes}")
 
   if(NOT EXISTS "${NODE_BIN}")

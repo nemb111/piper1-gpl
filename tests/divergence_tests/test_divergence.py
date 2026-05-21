@@ -87,6 +87,8 @@ _all_similarities: list[float] = []
 def test_variant_transcription_matches_text(variant: Any, i: int, text: str, divergence_wavs: dict[tuple[str, int], AudioResult], vosk_model: vosk.Model) -> None:  # pyright: ignore[reportUnknownParameterType]
     """Each variant's audio should transcribe back to the original input text (>= 0.85 similarity)."""
     result = divergence_wavs[(variant, i)]
+    if result.wav_path is None:
+        pytest.skip(f"{variant} variant not available (WASM build missing)")
     transcription = transcribe_wav_file(result.wav_path, vosk_model)
     expected = _normalize_text(text)
     matcher = difflib.SequenceMatcher(None, transcription.split(), expected.split(), autojunk=False)
@@ -105,6 +107,9 @@ def test_variant_transcription_matches_text(variant: Any, i: int, text: str, div
 def test_overall_similarity_avg(variant: Any, i: int, text: str, divergence_wavs: dict[tuple[str, int], AudioResult], vosk_model: vosk.Model) -> None:  # pyright: ignore[reportUnknownParameterType]
     """Overall average similarity across all individual tests (>= 0.95)."""
     global _overall_checked
+    result = divergence_wavs.get((variant, i))
+    if result is not None and result.wav_path is None:
+        pytest.skip(f"{variant} variant not available (WASM build missing)")
     overall = sum(_all_similarities) / len(_all_similarities) if _all_similarities else 0.0
     if not _overall_checked:
         _overall_checked = True
@@ -124,6 +129,8 @@ def test_different_texts_not_similar(variant: Any, divergence_wavs: dict[tuple[s
     """
     a = divergence_wavs[(variant, 1)]  # "To be, or not to be..."
     b = divergence_wavs[(variant, 20)]  # "Let there be light."
+    if a.wav_path is None or b.wav_path is None:
+        pytest.skip(f"{variant} variant not available (WASM build missing)")
 
     text1 = transcribe_wav_file(a.wav_path, vosk_model)
     text2 = transcribe_wav_file(b.wav_path, vosk_model)

@@ -68,6 +68,16 @@ else()
     add_custom_target(build_espeak_wasm ALL)
 endif()
 
+# ── Copy native espeak-ng data to cross-compile install dir (missing from Emscripten install) ──
+# Also clean up broken symlinks in bin/ that break file_packager
+add_custom_command(TARGET build_espeak_wasm POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data"
+        "${CMAKE_BINARY_DIR}/espeak_ng_cross_host/share/espeak-ng-data"
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "${CMAKE_BINARY_DIR}/espeak_ng_cross_host/bin"
+    COMMENT "Copying native espeak-ng data to WASM FS dir and cleaning up"
+    VERBATIM)
+
 # ── Piper WASM executable ──
 # Uses real piper.cpp with ort_shim (ONNX Runtime C++ API shim → onnxruntime-web)
 add_executable(piper_wasm
@@ -76,13 +86,14 @@ add_executable(piper_wasm
 
 set_target_properties(piper_wasm PROPERTIES
     LINK_FLAGS 
-        "-s ALLOW_MEMORY_GROWTH=0 -s MODULARIZE=1 -s EXPORT_NAME='piperWasm' \
+        "-s ALLOW_MEMORY_GROWTH=1 -s MODULARIZE=1 -s EXPORT_NAME='piperWasm' \
          -s EXPORTED_FUNCTIONS='[_malloc,_free,_piper_create,_piper_default_synthesize_options,_piper_synthesize_start,_piper_synthesize_next,_piper_free]' \
-         -s EXPORTED_RUNTIME_METHODS='[ccall,cwrap,stackAlloc,stackRestore,stackSave,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,HEAP8,HEAPU8,HEAPU16,HEAPU32,HEAPF32,HEAP64,FS]' \
-         -s ASYNCIFY=1 -s EXIT_RUNTIME=1 -s WASM_BIGINT=1 -s FILESYSTEM=1 \
-         -s INITIAL_MEMORY=2147483648 -s STACK_SIZE=67108864 -s DISABLE_EXCEPTION_CATCHING=0 \
+         -s EXPORTED_RUNTIME_METHODS='[ccall,cwrap,UTF8ToString,stringToUTF8,getValue,setValue,HEAPU8,FS]' \
+         -s ASYNCIFY=1 -s WASM_BIGINT=1 -s FILESYSTEM=1 \
+         -s DISABLE_EXCEPTION_CATCHING=0 \
          -s ALLOW_TABLE_GROWTH=1 -s DISABLE_DEPRECATED_FIND_EVENT_TARGET_BEHAVIOR=1 --no-entry \
-         --preload-file ${CMAKE_CURRENT_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data@/ --preload-file ${CMAKE_CURRENT_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data@/espeak_ng_cross/share/espeak-ng-data --preload-file ${PIPER_WASM_DATA_DIR}/piper_voices@/"
+         -s EXIT_RUNTIME=0 \
+         --preload-file ${CMAKE_CURRENT_BINARY_DIR}/espeak_ng_cross_host@/ --preload-file ${CMAKE_CURRENT_BINARY_DIR}/espeak_ng-install/share/espeak-ng-data@/ --preload-file ${PIPER_WASM_DATA_DIR}/piper_voices@/"
     OUTPUT_NAME "piper_wasm"
     SUFFIX ".js"
 )

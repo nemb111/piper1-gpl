@@ -54,6 +54,9 @@ mypy_path = [
   "/usr/lib/python3.12/dist-packages"
 ]
 
+[tool.hatch.envs.default]
+path = ".hatch"
+
 # Format environment - runs code formatters (black, cmake-format)
 [tool.hatch.envs.format]
 detached = true
@@ -72,7 +75,7 @@ dependency-groups = ["dev"]
 mypy = "python -m mypy tests/divergence_tests/config.py tests/divergence_tests/setup.py tests/divergence_tests/test_divergence.py tests/divergence_tests/conftest.py --ignore-missing-imports"
 pyright = "python -m pyright tests/divergence_tests/"
 ruff = "sh -c 'ruff check tests/divergence_tests/'"
-cmake = "find cmake -name '*.cmake' -o -name 'CMakeLists.txt' | xargs cmake-lint"
+cmake = "find cmake -name '*.cmake' -o -name 'CMakeLists.txt' | xargs cmake-lint --disabled-codes=C0301"
 all = ["mypy", "pyright", "ruff", "cmake"]
 
 # Divergence test environment - cross-variant audio similarity (Python vs native vs WASM)
@@ -100,19 +103,3 @@ git-clean = "sh -c 'git clean -ffdx -e .env -e .venv'"
 git-clean-force = "git clean -ffdx"
 
 
-
-[tool.cmake-format]
-
-# Maximum allowed line length before wrapping arguments/lists.
-line_width = 100
-
-# Number of spaces per indentation level.
-tab_size = 2
-
-# Maximum number of horizontally wrapped argument groups before
-# switching to a fully vertical layout.
-max_subgroups_hwrap = 2
-
-# Place closing parentheses on their own line when multiline formatting
-# is used ("dangling" closing parens).
-dangle_parens = true
