@@ -95,6 +95,12 @@ function(configure_espeak_ng_external)
     set(ucd_static_lib ${espeakng_build_src}/src/ucd-tools/libucd.a)
   endif()
 
+  # Always set up interface target (include paths, dependencies) — even if
+  # the library was already built in a previous configure/build run.
+  create_espeak_ng_targets(
+    ${ARG_TARGET_NAME} ${espeakng_build_src} ${espeakng_install_dir}
+    ${espeakng_static_lib} ${ucd_static_lib})
+
   # Early exit if library already built
   if(EXISTS "${espeakng_static_lib}")
     return()

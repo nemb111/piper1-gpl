@@ -123,6 +123,7 @@ def ensure_emscripten() -> None:
 
     work_dir = EMSDK_DIR
     if work_dir.exists():
+        print(f"Removing stale installation at {work_dir}")
         shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
     run(["tar", "xf", str(tarball), "--strip-components=1"], cwd=str(work_dir))
@@ -214,10 +215,7 @@ def cmake_configure() -> None:
         print(f"Error: data directory not found at {data_dir}", file=sys.stderr)
         sys.exit(1)
 
-    # Remove stale CMake cache to avoid mount-point path pollution from
-    # emsdk's internal cmake runs (emsdk.py install/activate).
-    if BUILD_DIR.exists():
-        shutil.rmtree(BUILD_DIR)
+    # Ensure build directory exists; CMake handles incremental reconfigure.
     BUILD_DIR.mkdir(parents=True, exist_ok=True)
 
     # Force the real repo root path so CMake resolves all paths correctly
@@ -243,13 +241,15 @@ def cmake_configure() -> None:
 def cmake_build() -> None:
     """Run CMake build (compile WASM)."""
     print("=== Building WASM ===")
-
-    nproc = os.cpu_count() or 4
-    run(
-        ["cmake", "--build", str(BUILD_DIR), f"-j{nproc}"],
-        cwd=str(Path(os.path.realpath(str(_REPO)))),
-        env=_build_env(),
-    )
+    # Fast-path: if output already exists, cmake --build would be a no-op.
+    # Skip spawning cmake just to discover it's up to date.
+    if not (BUILD_DIR / "piper_wasm.js").exists():
+        nproc = os.cpu_count() or 4
+        run(
+            ["cmake", "--build", str(BUILD_DIR), f"-j{nproc}"],
+            cwd=str(Path(os.path.realpath(str(_REPO)))),
+            env=_build_env(),
+        )
     print(f"WASM build complete (output in {BUILD_DIR})")
 
 
@@ -359,8 +359,12 @@ def main() -> None:
         from piper.download_voices import download_voice
         download_voice(DEFAULT_VOICE, VOICE_DIR)
 
-    if deps_exist():
-        print("Tools and dependencies are already installed, running build pipeline...")
+    # When running the default "all" step and everything is already set up,
+    # skip the pipeline entirely. Individual subcommands (cmake, build, etc.)
+    # are always executed regardless.
+    if args.command == "all" and deps_exist():
+        print("Tools and dependencies are already installed, nothing to do.")
+        return
 
     step_map = {
         "all": ["download-tools", "npm-install", "cmake", "build"],

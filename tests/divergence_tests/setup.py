@@ -38,32 +38,16 @@ from config import (
     VOSK_MODEL_DIR,
     VOSK_MODEL_URL,
     VOSK_MODEL_ZIP_DIR,
-    WASM_JS,
-    WASM_WASM,
     config_instance,
     voice_paths,
 )
 
 PIP_CMD = [sys.executable, "-m", "pip"]
 
-REQUIRED_PACKAGES = [
-    # Base Piper package (onnxruntime, pathvalidate)
-    "piper-tts",
-    # Dev build deps: scikit-build calls CMake
-    "scikit-build<1",
-    # Divergence test deps
-    "vosk>=0.3.45,<1",
-    "soundfile>=0.12,<1",
-    "librosa>=0.10,<1",
-]
 
 BUILD_TOOLS = [
     # System-level build tools (checked via PATH, not pip)
     "cmake",
-]
-
-DEV_PACKAGES = [
-    "pytest>=8",
 ]
 
 
@@ -73,30 +57,8 @@ def run(cmd: List[str], **kwargs: Any) -> int:
     return subprocess.check_call(cmd, **kwargs)
 
 
-def _pip_install_satisfied(pkg: str) -> bool:
-    """Check if a single pip package is already satisfied."""
-    # Strip version specifiers for pip show (e.g. "vosk>=0.3.45,<1" → "vosk")
-    name = (
-        pkg.split(">=")[0]
-        .split("<")[0]
-        .split(">")[0]
-        .split("=")[0]
-        .split("[")[0]
-        .strip()
-    )
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "show", name],
-        capture_output=True,
-        text=True,
-    )
-    return result.returncode == 0
-
-
 def all_deps_met() -> bool:
     """Check if all Python dependencies are already satisfied."""
-    for pkg in REQUIRED_PACKAGES + DEV_PACKAGES:
-        if not _pip_install_satisfied(pkg):
-            return False
     # Check system build tools
     for tool in BUILD_TOOLS:
         if shutil.which(tool) is None:
@@ -128,92 +90,52 @@ def deps_exist() -> bool:
     )
 
 
-def install_deps() -> None:
-    """Install Python dependencies."""
-    if all_deps_met():
-        print("All Python dependencies already satisfied.")
-        return
-    print("=== Installing Python dependencies ===")
-    try:
-        run(PIP_CMD + ["install", "--upgrade", "pip"])
-        run(PIP_CMD + ["install", "--upgrade", "setuptools", "wheel"])
-        for pkg in REQUIRED_PACKAGES:
-            run(PIP_CMD + ["install", pkg])
-        # Build tools: try pip first, fall back to system packages
-        for tool in BUILD_TOOLS:
-            if shutil.which(tool) is None:
-                run(PIP_CMD + ["install", tool])
-                break  # only try one at a time
-        run(PIP_CMD + ["install"] + DEV_PACKAGES)
-    except subprocess.CalledProcessError as e:
-        print(f"pip install failed (rc={e.returncode}).", file=sys.stderr)
-        print(
-            "If using a system Python, you may need to use a venv or pass --break-system-packages.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    print("Dependencies installed.")
+def install_python_pkgs() -> None:
+    """Install Python dependencies and build the C extension."""
 
+    run(
+        PIP_CMD + ["install", "-e", ".[test]"],
+        cwd=REPO,
+    )
 
-def ensure_piper_installed() -> None:
-    """Build the Piper Python package (prerequisite for CMake-native build)."""
-    piper_src = REPO / "src"
-    if list(piper_src.glob("**/espeakbridge.cpython-*.so")):
-        print("Piper Python module already built, skipping.")
-        return
-
-    print("=== Building Piper Python package ===")
+    # Editable install doesn't build the C extension — compile it in-place.
     run(
         [sys.executable, "setup.py", "build_ext", "--inplace"],
         cwd=REPO,
     )
-    print("Piper Python package built.")
 
 
-def build_native() -> None:
-    """Build the native C++ divergence test binary via CMake."""
-    print("=== Building native divergence test binary ===")
+class PiperBuilds:
+    def __init__(self) -> None:
+        pass
 
-    ensure_piper_installed()
+    @staticmethod
+    def native() -> None:
+        """Build the native C++ divergence test binary via CMake."""
+        print("=== Building native divergence test binary ===")
+        run(["cmake", str(DIR), "-B", str(NATIVE_BUILD_DIR)], cwd=str(REPO))
+        run(["cmake", "--build", str(NATIVE_BUILD_DIR), "-j"], cwd=str(REPO))
+        if not NATIVE_BIN_DIR.exists():
+            print(f"Error: binary not found at {NATIVE_BIN_DIR}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Native binary built: {NATIVE_BIN_DIR}")
 
-    if NATIVE_BIN_DIR.exists():
-        print(f"Native binary already exists at {NATIVE_BIN_DIR}, skipping build.")
-        return
+    @staticmethod
+    def python() -> None:
+        """Build the Piper Python package (prerequisite for CMake-native build)."""
+        print("=== Building Piper Python package ===")
+        run(
+            [sys.executable, "setup.py", "build_ext", "--inplace"],
+            cwd=REPO,
+        )
+        print("Piper Python package built.")
 
-    if NATIVE_BUILD_DIR.exists():
-        print(f"Cleaning partial build at {NATIVE_BUILD_DIR}")
-        shutil.rmtree(NATIVE_BUILD_DIR)
-    NATIVE_BUILD_DIR.mkdir(parents=True, exist_ok=True)
-
-    print("Configuring CMake...")
-    result = subprocess.run(
-        ["cmake", str(DIR), "-B", str(NATIVE_BUILD_DIR)],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO),
-    )
-    if result.returncode != 0:
-        print("CMake configure stderr:", file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
-        sys.exit(1)
-
-    print("Building...")
-    result = subprocess.run(
-        ["cmake", "--build", str(NATIVE_BUILD_DIR), "-j"],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO),
-    )
-    if result.returncode != 0:
-        print("CMake build stderr:", file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
-        sys.exit(1)
-
-    if not NATIVE_BIN_DIR.exists():
-        print(f"Error: binary not found at {NATIVE_BIN_DIR}", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Native binary built: {NATIVE_BIN_DIR}")
+    @staticmethod
+    def wasm() -> None:
+        """Build WASM piper binary via wasm_piper/build.py."""
+        print("=== Building WASM piper binary ===")
+        build_script = REPO / "wasm_piper" / "build.py"
+        run([sys.executable, str(build_script)], cwd=str(REPO))
 
 
 def download_vosk_model() -> None:
@@ -286,36 +208,6 @@ def copy_deterministic_config() -> None:
         json.dump(cfg, f, indent=2, ensure_ascii=True)
         f.write("\n")
     print(f"Created {dest}")
-
-
-def build_wasm() -> None:
-    """Build WASM piper binary via wasm_piper/build.py."""
-    print("=== Building WASM piper binary ===")
-
-    if WASM_JS.exists() and WASM_WASM.exists():
-        print("WASM build already exists, skipping.")
-        return
-
-    build_script = REPO / "wasm_piper" / "build.py"
-    print("Running wasm_piper/build.py (this may take a while)...")
-    result = subprocess.run(
-        [sys.executable, str(build_script)],
-        capture_output=True,
-        text=True,
-        cwd=str(REPO),
-    )
-    if result.returncode != 0:
-        print("WASM build failed:", file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
-        print(result.stdout, file=sys.stderr)
-        return
-
-    if WASM_JS.exists() and WASM_WASM.exists():
-        print(f"WASM build complete: {WASM_JS}, {WASM_WASM}")
-    else:
-        print(
-            "Warning: build reported success but artifacts not found.", file=sys.stderr
-        )
 
 
 def clean() -> None:
@@ -402,17 +294,19 @@ def main() -> None:
 
     for step in step_map[args.command]:
         if step == "deps":
-            install_deps()
+            install_python_pkgs()
         elif step == "build-native":
-            build_native()
+            PiperBuilds.native()
+        elif step == "build-wasm":
+            PiperBuilds.wasm()
+        elif step == "build-python":
+            PiperBuilds.python()
         elif step == "download-vosk-model":
             download_vosk_model()
         elif step == "download-voices":
             download_voices()
         elif step == "deterministic-config":
             copy_deterministic_config()
-        elif step == "build-wasm":
-            build_wasm()
         elif step == "clean":
             clean()
 

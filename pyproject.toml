@@ -3,8 +3,29 @@ name = "piper"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
-    "numpy>=2.4.6",
-    "onnxruntime>=1.26.0",
+    "pathvalidate>=3.3.1",
+    "pip>=26.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.5.0",
+  "cmake>=4.3.2",
+  "isort>=8.0.1",
+  "ninja>=1.13.0",
+  "scikit-build>=0.19.0",
+  "setuptools>=82.0.1",
+  "wheel>=0.47.0",
+]
+
+test = [
+  "piper[dev]",
+  "pytest>=9.0.3",
+  "vosk>=0.3.45",
+  "soundfile>=0.13.1",
+  "librosa>=0.11.0",
+  "numpy>=2.4.6",
+  "onnxruntime>=1.26.0",
 ]
 
 [build-system]
@@ -13,17 +34,13 @@ build-backend = "setuptools.build_meta"
 
 [dependency-groups]
 dev = [
-    "black>=26.5.1",
-    "cmakelang>=0.6.13",
-    "hatch>=1.16.5",
-    "isort>=8.0.1",
-    "librosa>=0.11.0",
-    "mypy>=2.1.0",
-    "pyright>=1.1.409",
-    "pytest>=9.0.3",
-    "ruff>=0.15.13",
-    "soundfile>=0.13.1",
-    "vosk>=0.3.45",
+  "black>=26.5.1",
+  "cmakelang>=0.6.13",
+  "hatch>=1.16.5",
+  "isort>=8.0.1",
+  "mypy>=2.1.0",
+  "pyright>=1.1.409",
+  "ruff>=0.15.13",
 ]
 
 [tool.black]
@@ -38,11 +55,7 @@ python_version = "3.12"
 strict = true
 explicit_package_bases = true
 
-files = [
-  "src/piper",
-  "tests",
-  "wasm_piper"
-]
+files = ["src/piper", "tests", "wasm_piper"]
 
 exclude = '''
 (?x)(
@@ -55,16 +68,25 @@ exclude = '''
 )
 '''
 
-mypy_path = [
-  "src",
-  "tests/divergence_tests",
-]
+mypy_path = ["src", "tests/divergence_tests"]
 
 [tool.hatch.envs.default]
 path = ".hatch"
 
-[tool.hatch.envs.default.scripts]
-clean = "git clean -ffdx -e .venv -e .claude -e CLAUDE.local.md"
+[tool.hatch.envs.build]
+dependencies = ["piper[dev]"]
+
+[tool.hatch.envs.build.scripts]
+piper_py = "python setup.py build_ext --inplace"
+all = ["piper_py"]
+
+
+[tool.hatch.envs.clean]
+detached = true
+skip_install = true
+
+[tool.hatch.envs.clean.scripts]
+all = "git clean -ffdx -e .venv -e .claude -e CLAUDE.local.md"
 
 # Format environment - runs code formatters (black, cmake-format)
 [tool.hatch.envs.format]
@@ -77,6 +99,9 @@ all = ["cmake"]
 
 # Lint environment - runs divergence test verification
 [tool.hatch.envs.lint]
+detached = true
+skip_install = true
+dependencies = ["piper[dev]", "piper[test]"]
 dependency-groups = ["dev"]
 
 [tool.hatch.envs.lint.scripts]
@@ -88,17 +113,9 @@ all = ["mypy", "pyright", "ruff", "cmake"]
 
 # Divergence test environment - cross-variant audio similarity (Python vs native vs WASM)
 [tool.hatch.envs.divergence]
-dependencies = [
-  "piper-tts",
-  "scikit-build<1",
-  "vosk>=0.3.45,<1",
-  "soundfile>=0.12,<1",
-  "librosa>=0.10,<1",
-  "pytest>=8",
-]
+dependencies = ["piper[test]"]
 post-install-commands = ["python tests/divergence_tests/setup.py all"]
 
 [tool.hatch.envs.divergence.scripts]
 test = "pytest tests/divergence_tests/ -v {args}"
 all = "pytest tests/divergence_tests/ -v"
-
