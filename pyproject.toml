@@ -3,6 +3,8 @@ name = "piper"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
+    "numpy>=2.4.6",
+    "onnxruntime>=1.26.0",
 ]
 
 [build-system]
@@ -15,9 +17,13 @@ dev = [
     "cmakelang>=0.6.13",
     "hatch>=1.16.5",
     "isort>=8.0.1",
+    "librosa>=0.11.0",
     "mypy>=2.1.0",
     "pyright>=1.1.409",
+    "pytest>=9.0.3",
     "ruff>=0.15.13",
+    "soundfile>=0.13.1",
+    "vosk>=0.3.45",
 ]
 
 [tool.black]
@@ -30,6 +36,7 @@ exclude = '''
 [tool.mypy]
 python_version = "3.12"
 strict = true
+explicit_package_bases = true
 
 files = [
   "src/piper",
@@ -50,12 +57,14 @@ exclude = '''
 
 mypy_path = [
   "src",
-  "/home/claude/.local/lib/python3.12/site-packages",
-  "/usr/lib/python3.12/dist-packages"
+  "tests/divergence_tests",
 ]
 
 [tool.hatch.envs.default]
 path = ".hatch"
+
+[tool.hatch.envs.default.scripts]
+clean = "git clean -ffdx -e .venv -e .claude -e CLAUDE.local.md"
 
 # Format environment - runs code formatters (black, cmake-format)
 [tool.hatch.envs.format]
@@ -68,11 +77,10 @@ all = ["cmake"]
 
 # Lint environment - runs divergence test verification
 [tool.hatch.envs.lint]
-detached = true
 dependency-groups = ["dev"]
 
 [tool.hatch.envs.lint.scripts]
-mypy = "python -m mypy tests/divergence_tests/config.py tests/divergence_tests/setup.py tests/divergence_tests/test_divergence.py tests/divergence_tests/conftest.py --ignore-missing-imports"
+mypy = "python -m mypy tests/divergence_tests/config.py tests/divergence_tests/setup.py tests/divergence_tests/test_divergence.py tests/divergence_tests/conftest.py"
 pyright = "python -m pyright tests/divergence_tests/"
 ruff = "sh -c 'ruff check tests/divergence_tests/'"
 cmake = "find cmake -name '*.cmake' -o -name 'CMakeLists.txt' | xargs cmake-lint --disabled-codes=C0301"
@@ -93,13 +101,4 @@ post-install-commands = ["python tests/divergence_tests/setup.py all"]
 [tool.hatch.envs.divergence.scripts]
 test = "pytest tests/divergence_tests/ -v {args}"
 all = "pytest tests/divergence_tests/ -v"
-
-# Clean environment - clean build artifacts and hatch caches
-[tool.hatch.envs.clean]
-detached = true
-
-[tool.hatch.envs.clean.scripts]
-git-clean = "sh -c 'git clean -ffdx -e .env -e .venv'"
-git-clean-force = "git clean -ffdx"
-
 

@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any, Callable, NamedTuple
 
 import numpy as np
-import soundfile as sf
-import vosk
+import soundfile as sf # type: ignore[import-untyped]
+import vosk # type: ignore[import-untyped]
 
 
 SynthesizeFunc = Callable[[str, Path], "AudioResult"]

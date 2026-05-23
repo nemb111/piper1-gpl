@@ -128,7 +128,7 @@ def deps_exist() -> bool:
     )
 
 
-def install_deps():
+def install_deps() -> None:
     """Install Python dependencies."""
     if all_deps_met():
         print("All Python dependencies already satisfied.")
@@ -155,7 +155,7 @@ def install_deps():
     print("Dependencies installed.")
 
 
-def ensure_piper_installed():
+def ensure_piper_installed() -> None:
     """Build the Piper Python package (prerequisite for CMake-native build)."""
     piper_src = REPO / "src"
     if list(piper_src.glob("**/espeakbridge.cpython-*.so")):
@@ -170,7 +170,7 @@ def ensure_piper_installed():
     print("Piper Python package built.")
 
 
-def build_native():
+def build_native() -> None:
     """Build the native C++ divergence test binary via CMake."""
     print("=== Building native divergence test binary ===")
 
@@ -216,7 +216,7 @@ def build_native():
     print(f"Native binary built: {NATIVE_BIN_DIR}")
 
 
-def download_vosk_model():
+def download_vosk_model() -> None:
     """Download the Vosk English speech recognition model to external/."""
     print("=== Downloading Vosk model ===")
 
@@ -243,7 +243,7 @@ def download_vosk_model():
     print(f"Model available at: {VOSK_MODEL_DIR}")
 
 
-def download_voices():
+def download_voices() -> None:
     """Download voice models needed for divergence tests."""
     print("=== Downloading voice models ===")
     PIPER_VOICES_DIR.mkdir(parents=True, exist_ok=True)
@@ -258,7 +258,7 @@ def download_voices():
     print(f"Voice models available at: {PIPER_VOICES_DIR}")
 
 
-def copy_deterministic_config():
+def copy_deterministic_config() -> None:
     """Generate deterministic config (noise_scale=0, noise_w=0) from the voice model."""
     print("=== Setting up deterministic config ===")
     if DETERMINISTIC_CONFIG_DIR.is_dir() and any(
@@ -288,7 +288,7 @@ def copy_deterministic_config():
     print(f"Created {dest}")
 
 
-def build_wasm():
+def build_wasm() -> None:
     """Build WASM piper binary via wasm_piper/build.py."""
     print("=== Building WASM piper binary ===")
 
@@ -318,7 +318,7 @@ def build_wasm():
         )
 
 
-def clean():
+def clean() -> None:
     """Remove build artifacts."""
     print("=== Cleaning build artifacts ===")
     for d in [NATIVE_BUILD_DIR, REPO / "build"]:
@@ -335,7 +335,7 @@ def clean():
     print("Clean complete.")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Setup script for Piper divergence tests"
     )

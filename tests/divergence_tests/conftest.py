@@ -13,7 +13,7 @@ Module-scoped fixtures:
 import subprocess
 
 import pytest
-import vosk
+import vosk # type: ignore[import-untyped]
 from piper import PiperVoice
 
 from _helpers import AudioResult, SynthesizeFunc
@@ -103,7 +103,8 @@ def divergence_wavs(
     """
     from _helpers import synthesize_native, synthesize_python, synthesize_wasm
 
-    from test_divergence import QUOTES, AudioResult
+    from test_divergence import QUOTES
+    from _helpers import AudioResult
 
     wavs: dict[tuple[str, int], AudioResult] = {}
     variants: list[str] = ["python", "native", "wasm"]

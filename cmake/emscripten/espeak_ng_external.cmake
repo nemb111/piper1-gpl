@@ -1,8 +1,8 @@
 # Emscripten module: native build + cross-compile as proper CMake targets.
 #
-# Workflow: 1. Native build via ExternalProject (espeak-ng built with emscripten
-# toolchain) 2. Cross-compile via ExternalProject (rebuilds with toolchain file
-# from native output)
+# Workflow: 1. Native build via ExternalProject (espeak-ng built with native
+# compiler) 2. Cross-compile via ExternalProject (rebuilds with Emscripten
+# toolchain)
 #
 # Usage: include(emscripten/espeak_ng_external) configure_espeak_ng_emscripten()
 
@@ -22,7 +22,7 @@ function(configure_espeak_ng_emscripten)
         ON
         CACHE
           BOOL
-          "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'python3 build.py' to set them up."
+          "External dependencies (emsdk, node, onnxruntime-web) are missing. Run 'build.py' to set them up."
     )
     if(NOT DEFINED ESPEAKNG_SRC_PATH OR NOT ESPEAKNG_SRC_PATH)
       return()
@@ -40,31 +40,26 @@ function(configure_espeak_ng_emscripten)
     add_custom_target(espeak_ng_external COMMENT "Placeholder target for cross-compile dependency")
   endif()
 
-  # ── Step 2: Cross-compile via ExternalProject (emscripten toolchain) ──
-  # Restore emscripten for cross build — clear native compiler override
-  set(piper_espeakng_cmake_args "")
-  get_filename_component(emscripten_dir "${EMCC_PATH}" DIRECTORY)
-  set(em_cmake_file
-      "${emscripten_dir}/cmake/Modules/Platform/Emscripten.cmake")
-  set(espeakng_install_dir "${CMAKE_BINARY_DIR}/espeak_ng-install")
-  set(espeakng_build_dir "${CMAKE_BINARY_DIR}/espeak_ng")
-
-  # Download & extract to external/ so the source tree lives outside build/
-  get_filename_component(project_root "${CMAKE_CURRENT_LIST_DIR}/../.."
-                         ABSOLUTE)
-  set(espeakng_external_dir "${project_root}/external/espeak_ng")
-  set(cross_prefix "${espeakng_external_dir}/cross")
-  set(cross_src_dir "${cross_prefix}/src/espeak_ng_cross")
-  set(cross_build_dir "${cross_src_dir}-build")
-  set(native_build_src "${espeakng_build_dir}/src/espeak_ng_external-build")
-  set(cross_ucd_lib "${cross_build_dir}/src/ucd-tools/libucd.a")
+  # ── Step 2: Cross-compile via ExternalProject (Emscripten toolchain) ──
+  # Cross-compile metadata lives inside build/ so clean/rebuild works.
+  set(cross_prefix "${CMAKE_BINARY_DIR}/espeak_ng_cross")
 
   # Cross-compile needs its own install dir so the EXISTS check doesn't block
   # it. We install to a host-accessible path and assemble the WASM FS dir.
   set(cross_install_dir "${CMAKE_BINARY_DIR}/espeak_ng_cross_host")
   set(cross_espeakng_lib "${cross_install_dir}/lib/libespeak-ng.a")
+
+  # Cross-compile build's ucd lib location
+  set(cross_ucd_lib "${cross_prefix}/src/espeak_ng_cross-build/src/ucd-tools/libucd.a")
+
   # Install to host path instead of Emscripten virtual fs root
   set(espeakng_install_dir_override "${cross_install_dir}")
+
+  # Cross-compile uses its own git clone. The Emscripten toolchain and
+  # NativeBuild_DIR (for intonation building) are passed as CMAKE_ARGS.
+  get_filename_component(emscripten_dir "${EMCC_PATH}" DIRECTORY)
+  set(em_cmake_file
+      "${emscripten_dir}/cmake/Modules/Platform/Emscripten.cmake")
 
   configure_espeak_ng_external(
     TARGET_NAME
@@ -79,14 +74,11 @@ function(configure_espeak_ng_emscripten)
     ""
     EXTRA_CMAKE_ARGS
     -DCMAKE_TOOLCHAIN_FILE=${em_cmake_file}
-    -DNativeBuild_DIR=${native_build_src}/build/src
+    -DNativeBuild_DIR=${CMAKE_BINARY_DIR}/espeak_ng/src/espeak_ng_external-build/build/src
     DEPENDS
-    espeak_ng_external
-    SRC_DIR
-    ${ESPEAKNG_SRC_PATH})
+    espeak_ng_external)
 
-  # ── After cross-configure, set up imported targets with cross-compiled paths
-  # ──
+  # ── After cross-configure, set up imported targets with cross-compiled paths ──
   if(NOT TARGET espeakng)
     add_library(espeakng STATIC IMPORTED)
   endif()
@@ -102,5 +94,7 @@ function(configure_espeak_ng_emscripten)
     add_library(espeakng_iface_lib INTERFACE)
     target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
   endif()
-  set_target_properties(espeakng_iface_lib PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${espeakng_install_dir}/include")
+  target_include_directories(espeakng_iface_lib
+                     INTERFACE "${cross_install_dir}/include")
+  add_dependencies(espeakng_iface_lib espeak_ng_cross)
 endfunction()

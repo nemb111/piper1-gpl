@@ -20,7 +20,7 @@ import difflib
 from typing import Any
 
 import pytest
-import vosk
+import vosk # type: ignore[import-untyped]
 
 from _helpers import AudioResult, transcribe_wav_file
 

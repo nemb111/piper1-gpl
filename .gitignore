@@ -23,3 +23,5 @@ lightning_logs/
 **/build*
 **/node_modules*
 external/
+.claude/
+CLAUDE.local.md

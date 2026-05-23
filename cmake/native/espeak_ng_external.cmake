@@ -46,9 +46,9 @@ function(create_espeak_ng_targets target_name build_src install_dir static_lib
   if(NOT TARGET espeakng_iface_lib)
     add_library(espeakng_iface_lib INTERFACE)
     target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
-    target_include_directories(espeakng_iface_lib
-                               INTERFACE ${install_dir}/include)
   endif()
+  target_include_directories(espeakng_iface_lib
+                   INTERFACE ${install_dir}/include)
   add_dependencies(espeakng_iface_lib ${target_name})
 endfunction()
 
