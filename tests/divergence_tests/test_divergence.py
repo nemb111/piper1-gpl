@@ -13,18 +13,25 @@ Requirements:
     pip install vosk soundfile librosa
     # 100MB Vosk model: external/vosk-model-small-en-us-0.15
     # Download: https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip
-    # Run: python3 tests/divergence_tests/setup.py all
+    # Run: python3 tests/divergence_tests/build.py all
 """
 
 import difflib
+import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
-import vosk # type: ignore[import-untyped]
+import vosk  # type: ignore[import-not-found]
+
+# Allow importing local modules from this directory (needed when pytest
+# is run from a different working directory, e.g. repo root).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _helpers import AudioResult, transcribe_wav_file
 
 # ── Utility ──
+
 
 def _normalize_text(text: str) -> str:
     """Lowercase, strip non-alphanumeric characters, collapse whitespace."""
@@ -84,7 +91,13 @@ _all_similarities: list[float] = []
 
 @pytest.mark.parametrize("variant", ["python", "native", "wasm"])
 @pytest.mark.parametrize("i,text", enumerate(QUOTES, 1))
-def test_variant_transcription_matches_text(variant: Any, i: int, text: str, divergence_wavs: dict[tuple[str, int], AudioResult], vosk_model: vosk.Model) -> None:  # pyright: ignore[reportUnknownParameterType]
+def test_variant_transcription_matches_text(
+    variant: Any,
+    i: int,
+    text: str,
+    divergence_wavs: dict[tuple[str, int], AudioResult],
+    vosk_model: vosk.Model,
+) -> None:  # pyright: ignore[reportUnknownParameterType]
     """Each variant's audio should transcribe back to the original input text (>= 0.85 similarity)."""
     result = divergence_wavs[(variant, i)]
     if result.wav_path is None:
@@ -103,8 +116,12 @@ def test_variant_transcription_matches_text(variant: Any, i: int, text: str, div
 
 
 @pytest.mark.parametrize("variant", ["python", "native", "wasm"])
-@pytest.mark.parametrize("i,text", enumerate(QUOTES, 1))
-def test_overall_similarity_avg(variant: Any, i: int, text: str, divergence_wavs: dict[tuple[str, int], AudioResult], vosk_model: vosk.Model) -> None:  # pyright: ignore[reportUnknownParameterType]
+@pytest.mark.parametrize("i", range(1, len(QUOTES) + 1))
+def test_overall_similarity_avg(
+    variant: Any,
+    i: int,
+    divergence_wavs: dict[tuple[str, int], AudioResult],
+) -> None:  # pyright: ignore[reportUnknownParameterType]
     """Overall average similarity across all individual tests (>= 0.95)."""
     global _overall_checked
     result = divergence_wavs.get((variant, i))
@@ -121,8 +138,13 @@ def test_overall_similarity_avg(variant: Any, i: int, text: str, divergence_wavs
 
 # ── Negative tests: different text should NOT be similar ──
 
+
 @pytest.mark.parametrize("variant", ["python", "native", "wasm"])
-def test_different_texts_not_similar(variant: Any, divergence_wavs: dict[tuple[str, int], AudioResult], vosk_model: vosk.Model) -> None:  # pyright: ignore[reportUnknownParameterType]
+def test_different_texts_not_similar(
+    variant: Any,
+    divergence_wavs: dict[tuple[str, int], AudioResult],
+    vosk_model: vosk.Model,
+) -> None:  # pyright: ignore[reportUnknownParameterType]
     """Compare quote 1 vs quote 20 from same variant -- similarity must be low.
 
     Negative test: two very different phrases should produce different audio.

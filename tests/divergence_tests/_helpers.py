@@ -4,13 +4,13 @@ These are kept in a separate module so they can be imported
 by both conftest.py (fixtures) and test_divergence.py (tests).
 """
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
-import soundfile as sf # type: ignore[import-untyped]
-import vosk # type: ignore[import-untyped]
-
+import soundfile as sf  # type: ignore[import-not-found]
+import vosk  # type: ignore[import-not-found]
 
 SynthesizeFunc = Callable[[str, Path], "AudioResult"]
 
@@ -31,9 +31,7 @@ def synthesize_python(text: str, wav_path: Path, voice: Any) -> AudioResult:
     return AudioResult(wav_path, None, 0)
 
 
-def synthesize_native(
-    text: str, wav_path: Path, config: Any, native_built: bool
-) -> AudioResult:
+def synthesize_native(text: str, wav_path: Path, config: Any, native_built: bool) -> AudioResult:
     """Synthesize text using native C++ binary with deterministic options."""
     import pytest
 
@@ -71,8 +69,14 @@ def synthesize_wasm(text: str, wav_path: Path, config: Any) -> AudioResult:
         return AudioResult(wav_path=None, audio=None, sample_rate=0)
 
     result = subprocess.run(
-        ["node", str(config.wasm_synthesize), str(config.model_path),
-         str(config.deterministic_config_path), text, str(wav_path)],
+        [
+            "node",
+            str(config.wasm_synthesize),
+            str(config.model_path),
+            str(config.deterministic_config_path),
+            text,
+            str(wav_path),
+        ],
         capture_output=True,
         timeout=180,
         cwd=str(config.repo),
@@ -94,12 +98,11 @@ def transcribe_wav_file(wav_path: Path, vosk_model: vosk.Model) -> str:
     audio_16k = _resample_to_16k(audio, sr)  # pyright: ignore[reportUnknownArgumentType]
     pcm_16 = np.clip(audio_16k * 32767.0, -32768, 32767).astype(np.int16)
     buf = io.BytesIO()
-    wf = wave.open(buf, "wb")
-    wf.setnchannels(1)
-    wf.setsampwidth(2)
-    wf.setframerate(16000)
-    wf.writeframes(pcm_16.tobytes())
-    wf.close()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(pcm_16.tobytes())
     wav_bytes = buf.getvalue()
 
     rec = vosk.KaldiRecognizer(vosk_model, 16000)
@@ -113,6 +116,6 @@ def _resample_to_16k(audio: np.ndarray, sr: int) -> np.ndarray:
     """Resample audio to 16 kHz using librosa."""
     if sr == 16000:
         return audio
-    import librosa
+    import librosa  # type: ignore[import-not-found]
 
-    return librosa.resample(audio, orig_sr=sr, target_sr=16000)
+    return np.asarray(librosa.resample(audio, orig_sr=sr, target_sr=16000))

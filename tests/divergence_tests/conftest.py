@@ -13,19 +13,11 @@ Module-scoped fixtures:
 import subprocess
 
 import pytest
-import vosk # type: ignore[import-untyped]
-from piper import PiperVoice
-
+import vosk  # type: ignore[import-not-found]
 from _helpers import AudioResult, SynthesizeFunc
-from config import (
-    Config,
-    DIR,
-    NATIVE_BIN_DIR,
-    REPO,
-    VOSK_MODEL_DIR,
-    config_instance,
-)
+from config import DIR, NATIVE_BIN_DIR, REPO, VOSK_MODEL_DIR, Config, config_instance
 
+from piper import PiperVoice
 
 # ── Session-scoped fixtures ──────────────────────────
 
@@ -63,24 +55,23 @@ def native_built() -> bool:
 
     result = subprocess.run(
         ["cmake", str(DIR), "-B", str(build_dir)],
-        capture_output=True, text=True, cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
     )
     if result.returncode != 0:
         return False
 
     result = subprocess.run(
         ["cmake", "--build", str(build_dir)],
-        capture_output=True, text=True, cwd=str(REPO),
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
     )
-    if result.returncode != 0:
-        return False
-
-    return True
+    return result.returncode == 0
 
 
 # ── Module-scoped fixtures ───────────────────────────
-
-
 
 
 @pytest.fixture(scope="module")
@@ -94,17 +85,19 @@ def divergence_wavs(
     piper_voice: PiperVoice,
     config: Config,
     native_built: bool,
-    vosk_model: vosk.Model,
 ) -> dict[tuple[str, int], AudioResult]:
     """Synthesize all 20 quotes from all 3 variants, return dict keyed by (variant, index).
 
     Only stores file paths -- audio is lazy-loaded from disk during transcription.
     Piper voice model is freed after synthesis to keep memory low for transcription.
     """
-    from _helpers import synthesize_native, synthesize_python, synthesize_wasm
-
+    from _helpers import (
+        AudioResult,
+        synthesize_native,
+        synthesize_python,
+        synthesize_wasm,
+    )
     from test_divergence import QUOTES
-    from _helpers import AudioResult
 
     wavs: dict[tuple[str, int], AudioResult] = {}
     variants: list[str] = ["python", "native", "wasm"]
@@ -127,5 +120,6 @@ def divergence_wavs(
 
     del piper_voice
     import gc
+
     gc.collect()
     return wavs

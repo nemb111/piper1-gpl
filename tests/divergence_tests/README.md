@@ -12,7 +12,7 @@ Install divergence dependencies and set up the environment:
 
 ```sh
 pip install "piper-tts[divergence]"
-python3 tests/divergence_tests/setup.py all
+python3 tests/divergence_tests/build.py all
 # Individual steps: deps | build-native | download-model
 ```
 

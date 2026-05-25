@@ -1,6 +1,6 @@
 """Shared configuration for divergence tests.
 
-All paths used by setup.py and test_divergence.py live here.
+All paths used by build.py and test_divergence.py live here.
 Call refresh(voice) after changing the voice to recompute voice-dependent paths.
 """
 

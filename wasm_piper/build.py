@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 # ── Pinned versions (from cmake/emscripten/options.cmake, cmake/emscripten/find_npm.cmake) ──
 NODE_VERSION = "22.16.0"
@@ -56,7 +57,7 @@ ORT_NODE_MODULES = _DIR / "node_modules" / "onnxruntime-web"
 _BUILD_TOOLS = ["cmake"]
 
 
-def run(cmd, **kwargs):
+def run(cmd: list[str], **kwargs: Any) -> int:
     """Run a command, raising on failure."""
     print(f"+ {' '.join(cmd)}")
     return subprocess.check_call(cmd, **kwargs)
@@ -69,7 +70,7 @@ def which(name: str) -> str | None:
 # ── Download tools ────────────────────────────────────────────────
 
 
-def _cached_dir(name: Path) -> Path:
+def _cached_dir(name: str) -> Path:
     """Return a cache dir inside build/external/."""
     d = BUILD_DIR / "external" / name
     d.mkdir(parents=True, exist_ok=True)
@@ -173,7 +174,7 @@ def npm_install() -> None:
 # ── CMake ─────────────────────────────────────────────────────────
 
 
-def _build_env() -> dict:
+def _build_env() -> dict[str, str]:
     """Return env with Node.js and Emscripten on PATH."""
     env = os.environ.copy()
     parts = [str(NODE_DOWNLOAD_DIR / "bin"), str(EMSDK_DIR / "emsdk")]
@@ -266,7 +267,7 @@ def check_cmake() -> None:
     result = subprocess.run([cmake, "--version"], capture_output=True, text=True)
     actual = result.stdout.splitlines()[0].split()[-1]
 
-    def ver(s: str) -> tuple:
+    def ver(s: str) -> tuple[int, ...]:
         return tuple(int(x) for x in s.split("."))
 
     if ver(actual) < ver(CMAKE_MIN_VERSION):

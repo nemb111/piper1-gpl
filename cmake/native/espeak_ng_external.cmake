@@ -48,7 +48,7 @@ function(create_espeak_ng_targets target_name build_src install_dir static_lib
     target_link_libraries(espeakng_iface_lib INTERFACE espeakng ucd)
   endif()
   target_include_directories(espeakng_iface_lib
-                   INTERFACE ${install_dir}/include)
+                             INTERFACE ${install_dir}/include)
   add_dependencies(espeakng_iface_lib ${target_name})
 endfunction()
 
@@ -95,8 +95,8 @@ function(configure_espeak_ng_external)
     set(ucd_static_lib ${espeakng_build_src}/src/ucd-tools/libucd.a)
   endif()
 
-  # Always set up interface target (include paths, dependencies) — even if
-  # the library was already built in a previous configure/build run.
+  # Always set up interface target (include paths, dependencies) — even if the
+  # library was already built in a previous configure/build run.
   create_espeak_ng_targets(
     ${ARG_TARGET_NAME} ${espeakng_build_src} ${espeakng_install_dir}
     ${espeakng_static_lib} ${ucd_static_lib})
@@ -120,8 +120,8 @@ function(configure_espeak_ng_external)
   endif()
   if(DEFINED ARG_EXTRA_CMAKE_ARGS)
     string(REPLACE ";" "\;" _escaped "${ARG_EXTRA_CMAKE_ARGS}")
-    # ARG_EXTRA_CMAKE_ARGS is a semicolon-separated string from cmake_parse_arguments
-    # Split it back into a list for build_cmake_args
+    # ARG_EXTRA_CMAKE_ARGS is a semicolon-separated string from
+    # cmake_parse_arguments Split it back into a list for build_cmake_args
     set(extra_list ${ARG_EXTRA_CMAKE_ARGS})
     list(APPEND build_cmake_args ${extra_list})
   endif()
@@ -156,21 +156,32 @@ endfunction()
 # Resolve default values for espeak-ng configuration
 function(_resolve_espeak_ng_defaults)
   if(NOT DEFINED ARG_TARGET_NAME)
-    set(ARG_TARGET_NAME "espeak_ng_external" PARENT_SCOPE)
+    set(ARG_TARGET_NAME
+        "espeak_ng_external"
+        PARENT_SCOPE)
   endif()
   if(NOT DEFINED ARG_UPDATE_DISCONNECTED)
-    set(ARG_UPDATE_DISCONNECTED "${PIPER_ESPEAKNG_UPDATE_DISCONNECTED}" PARENT_SCOPE)
+    set(ARG_UPDATE_DISCONNECTED
+        "${PIPER_ESPEAKNG_UPDATE_DISCONNECTED}"
+        PARENT_SCOPE)
   endif()
-  # Caller may pass EXTRA_CMAKE_ARGS (multiValue) or EXTRA_CMAKE_ARGS_PREFIX (oneValue)
+  # Caller may pass EXTRA_CMAKE_ARGS (multiValue) or EXTRA_CMAKE_ARGS_PREFIX
+  # (oneValue)
   if(NOT DEFINED ARG_EXTRA_CMAKE_ARGS_PREFIX)
     if(DEFINED piper_espeakng_cmake_args)
-      set(ARG_EXTRA_CMAKE_ARGS_PREFIX "${piper_espeakng_cmake_args}" PARENT_SCOPE)
+      set(ARG_EXTRA_CMAKE_ARGS_PREFIX
+          "${piper_espeakng_cmake_args}"
+          PARENT_SCOPE)
     endif()
   endif()
   if(NOT DEFINED ARG_PREFIX)
-    set(ARG_PREFIX "${CMAKE_BINARY_DIR}/espeak_ng" PARENT_SCOPE)
+    set(ARG_PREFIX
+        "${CMAKE_BINARY_DIR}/espeak_ng"
+        PARENT_SCOPE)
   endif()
   if(NOT DEFINED ARG_SRC_DIR)
-    set(ARG_SRC_DIR "" PARENT_SCOPE)
+    set(ARG_SRC_DIR
+        ""
+        PARENT_SCOPE)
   endif()
 endfunction()

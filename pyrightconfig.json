@@ -5,15 +5,12 @@
     "**/*.egg-info/**",
     "**/_skbuild/**",
     "wasm_piper/node_modules/**",
-    "**/tests_old/**"
   ],
   "include": [
-    "src/piper",
-    "tests",
+    "tests/divergence_tests",
     "wasm_piper"
   ],
   "typeCheckingMode": "strict",
-  "pythonVersion": "3.12",
   "extraPaths": [
     "src",
     "/home/claude/.local/lib/python3.12/site-packages",

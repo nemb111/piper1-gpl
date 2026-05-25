@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Setup script for Piper divergence tests.
+"""Build script for Piper divergence tests.
 
 Installs Python dependencies, builds the native C++ test binary via CMake,
 downloads voice models and the Vosk speech recognition model, and
 builds WASM if Emscripten is available.
 
 Usage:
-    python setup.py                               # run all steps (skip if already set up)
-    python setup.py deps                          # install Python dependencies only
-    python setup.py build-native                  # build native binary only
-    python setup.py download-vosk-model                # download Vosk model only
-    python setup.py download-voices               # download voice models only
-    python setup.py deterministic-config          # generate deterministic config
-    python setup.py build-wasm                    # build WASM binary (if emcc available)
-    python setup.py clean                         # remove build artifacts
-    python setup.py --list-voices                 # list all available Piper voices
-    python setup.py --voice en_US-amy-low all     # use a different voice
+    python build.py                               # run all steps (skip if already set up)
+    python build.py deps                          # install Python dependencies only
+    python build.py build-native                  # build native binary only
+    python build.py download-vosk-model                # download Vosk model only
+    python build.py download-voices               # download voice models only
+    python build.py deterministic-config          # generate deterministic config
+    python build.py build-wasm                    # build WASM binary (if emcc available)
+    python build.py clean                         # remove build artifacts
+    python build.py --list-voices                 # list all available Piper voices
+    python build.py --voice en_US-amy-low all     # use a different voice
 """
 
 import argparse
